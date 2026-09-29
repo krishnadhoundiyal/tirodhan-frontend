@@ -170,8 +170,142 @@ Those decisions belong to later architecture categories.
 
 ---
 
+## Category 2 — Repository and Platform Structure
+
+### Status
+
+**Frozen — monorepo direction and isolation rules**
+
+### Repository model
+
+Tirodhan frontend uses a **single monorepo**.
+
+The monorepo contains the separately deployable frontend applications defined in Category 1 and provides one place for frontend architecture, tooling, contracts, and deliberately shared packages.
+
+The reason for choosing a monorepo is **not** that all frontend code should be shared.
+
+The primary benefits are:
+
+- one frontend architecture and governance boundary;
+- coordinated dependency/tooling policy;
+- easier cross-application contract validation;
+- one place for genuinely shared assets or contracts;
+- atomic changes when a cross-application change is genuinely required;
+- reduced repository and pipeline administration.
+
+### Independent application boundaries remain mandatory
+
+Monorepo does **not** mean monolithic deployment.
+
+Each application remains an independent product and deployable:
+
+- Customer Mobile;
+- Rider Mobile;
+- Operations Web;
+- Public Web.
+
+Customer Mobile and Rider Mobile remain separate application binaries.
+
+Operations Web and Public Web remain separately deployable web applications.
+
+No deployment pipeline may treat all frontend applications as one release unit merely because they share a repository.
+
+### Build isolation
+
+An application-local change should not require unrelated applications to be built or deployed.
+
+For example:
+
+```text
+Rider-only change
+    -> Rider build/test
+    -> Rider release only
+
+Customer remains untouched
+```
+
+If a shared dependency changes, every consuming application may need validation.
+
+That does **not** imply that every validated application must also be deployed.
+
+CI must therefore support an affected-application/dependency-graph model rather than a permanent "build everything, deploy everything" model.
+
+The exact CI/task-orchestration tool is not frozen in this category.
+
+### Source-code isolation
+
+Applications must not import implementation source directly from another application.
+
+Conceptually:
+
+```text
+apps/customer-mobile   X--> apps/rider-mobile
+apps/rider-mobile      X--> apps/operations-web
+apps/operations-web    X--> apps/public-web
+```
+
+Cross-application sharing, where justified, must pass through an explicit shared-package or shared-contract boundary.
+
+This prevents the monorepo from becoming an accidental frontend monolith.
+
+### Sharing policy
+
+TypeScript sharing is **permitted but not an objective by itself**.
+
+A shared abstraction must provide meaningful cross-application value.
+
+The default is not to generalize application-specific workflows merely because two applications use TypeScript or React.
+
+Likely candidates for later review include:
+
+- design tokens;
+- backend API contracts/generated types;
+- narrow authentication protocol primitives;
+- common frontend tooling configuration.
+
+The exact packages, APIs, and implementation mechanisms are **not frozen here** and belong to their respective later architecture categories.
+
+Application-specific concerns such as Customer workflows, Rider operational flows, Manager screens, navigation trees, and business orchestration remain owned by their application unless a later architecture decision explicitly says otherwise.
+
+### Initial repository shape
+
+The monorepo is expected to separate applications from explicitly shared packages:
+
+```text
+tirodhan-frontend/
+├── apps/
+│   ├── customer-mobile/
+│   ├── rider-mobile/
+│   ├── operations-web/
+│   └── public-web/
+│
+├── packages/
+│   └── [only explicitly approved shared packages]
+│
+└── docs/
+    └── frontend architecture
+```
+
+This is an architectural boundary, not a requirement to scaffold every application or package immediately.
+
+### Guardrail
+
+The governing principle is:
+
+> **Share the platform deliberately; do not couple the products accidentally.**
+
+A monorepo must preserve:
+
+- independent application ownership;
+- independent buildability;
+- independent deployability;
+- narrow, explicit sharing boundaries;
+- no mandatory all-app release.
+
+---
+
 ## Next architecture category
 
-**Category 2 — Repository and Platform Structure**
+**Category 3 — Authentication and Session Architecture**
 
 To be reviewed before anything from that category is committed as architecture.
