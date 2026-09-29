@@ -93,20 +93,31 @@ Future businesses such as restoration, cow/farm operations, commerce, or partner
 
 They must not be modelled as collection screens merely because collection exists first.
 
-#### 4. Public Web
+#### 4. Customer Web
 
-**Public information, discovery, trust, and acquisition surface.**
+**Secondary but complete CUSTOMER-facing web surface.**
 
-Its purpose includes:
+Customer Web serves both public acquisition/content routes and authenticated customer journeys.
+
+Public responsibilities include:
 
 - explaining Tirodhan and its services;
 - public informational content;
 - search/discovery and campaign landing pages;
 - trust/credibility content;
-- directing users to the customer mobile experience;
-- future partner or business information where appropriate.
+- directing users toward the appropriate customer journey.
 
-V1 does not require Public Web to reproduce the complete Customer Mobile transactional journey.
+Authenticated V1 responsibilities include:
+
+- OTP authentication;
+- addresses and serviceability;
+- collection booking;
+- slot selection;
+- payment;
+- request/activity status;
+- account and support entry points.
+
+Customer Mobile remains the primary customer product, but Customer Web is part of V1 and must support a real customer transaction journey rather than acting only as a marketing site.
 
 ### Application boundary
 
@@ -124,15 +135,15 @@ The agreed product boundary is:
                             |
                        FastAPI API
 
- Public Web
-   discovery / information / acquisition
+ Customer Web
+   public routes + authenticated CUSTOMER journey
 ```
 
 Customer Mobile and Rider Mobile are **separate application binaries/products**, even if later architecture allows them to share code and infrastructure.
 
 Operations Web is a separate operational product.
 
-Public Web is a separate public-facing surface.
+Customer Web is a separate deployable customer-facing web application containing both public and authenticated CUSTOMER routes.
 
 ### Future actor boundary
 
@@ -201,12 +212,12 @@ Each application remains an independent product and deployable:
 
 - Customer Mobile;
 - Rider Mobile;
-- Operations Web;
-- Public Web.
+- Customer Web;
+- Operations Web.
 
 Customer Mobile and Rider Mobile remain separate application binaries.
 
-Operations Web and Public Web remain separately deployable web applications.
+Customer Web and Operations Web remain separately deployable web applications.
 
 No deployment pipeline may treat all frontend applications as one release unit merely because they share a repository.
 
@@ -241,7 +252,7 @@ Conceptually:
 ```text
 apps/customer-mobile   X--> apps/rider-mobile
 apps/rider-mobile      X--> apps/operations-web
-apps/operations-web    X--> apps/public-web
+apps/operations-web    X--> apps/customer-web
 ```
 
 Cross-application sharing, where justified, must pass through an explicit shared-package or shared-contract boundary.
@@ -276,8 +287,8 @@ tirodhan-frontend/
 ├── apps/
 │   ├── customer-mobile/
 │   ├── rider-mobile/
-│   ├── operations-web/
-│   └── public-web/
+│   ├── customer-web/
+│   └── operations-web/
 │
 ├── packages/
 │   └── [only explicitly approved shared packages]
@@ -304,8 +315,216 @@ A monorepo must preserve:
 
 ---
 
+## Category 3 — Authentication and Session Architecture
+
+### Status
+
+**Frozen for mobile and role/bootstrap semantics. Web session direction is frozen subject to a mandatory APIM integration POC before production dependence.**
+
+### Existing backend authority
+
+Frontend authentication consumes the already-frozen backend Phase 1O model.
+
+FastAPI/PostgreSQL remain authoritative for:
+
+- OTP verification;
+- application user identity;
+- refresh-session lifecycle and revocation;
+- access-token issuance and verification;
+- live role membership;
+- authorization of protected operations.
+
+Azure API Management (APIM) remains the public API gateway.
+
+Frontend applications must not create a second identity, session, or authorization model.
+
+### Role/bootstrap semantics
+
+Access JWTs intentionally contain no roles or PII.
+
+Frontend applications therefore require a small authenticated principal/bootstrap read:
+
+```text
+GET /v1/auth/me
+```
+
+returning only the information needed for presentation/bootstrap, conceptually:
+
+```json
+{
+  "user_id": "...",
+  "roles": ["CUSTOMER", "RIDER"]
+}
+```
+
+The role returned to the frontend is **presentation/bootstrap information only**.
+
+It may determine whether the authenticated user may enter the currently opened product experience:
+
+- Customer Mobile / Customer Web -> CUSTOMER;
+- Rider Mobile -> RIDER;
+- Operations Web -> MANAGER.
+
+Frontend applications must never send asserted roles back as authorization input.
+
+No role header, role body field, or role-derived client assertion may authorize a backend operation.
+
+Every protected API operation continues to derive identity from the access token and perform current authorization server-side through FastAPI/live PostgreSQL role state.
+
+A cached frontend role never overrides a current backend decision.
+
+### Mobile session handling
+
+Customer Mobile and Rider Mobile use the existing Phase 1O token contract directly through APIM.
+
+After OTP verification:
+
+- the short-lived access JWT is held in application memory;
+- the stable opaque refresh credential is held only in operating-system secure credential storage;
+- neither token is written to ordinary local storage, application logs, analytics, or the Rider operational database.
+
+On application restart:
+
+```text
+secure refresh credential
+    -> /v1/auth/refresh through APIM
+    -> new access JWT
+    -> memory
+```
+
+The frontend uses the server-returned token lifetime and does not hardcode an access-token TTL.
+
+For a protected call returning `401`:
+
+- perform at most one coordinated refresh;
+- concurrent failed calls must share the same in-flight refresh attempt;
+- retry the original call once after successful refresh;
+- if refresh itself is rejected, clear the local authenticated session and require OTP login again.
+
+A `403` is an authorization result, not a refresh signal. It must not cause a refresh loop.
+
+The stable refresh credential deliberately supports safe retry after a lost successful refresh response.
+
+### Web session model
+
+Customer Web and Operations Web must not expose the stable refresh credential to browser JavaScript or store it in `localStorage`, `sessionStorage`, or IndexedDB.
+
+The chosen direction is an **APIM Web Session Adapter** in front of the existing Phase 1O FastAPI endpoints.
+
+APIM is an adapter only; it is not a second identity service and not a general-purpose BFF.
+
+#### Web login
+
+FastAPI continues to return its normal Phase 1O login result.
+
+For approved web-auth routes, APIM:
+
+1. receives the FastAPI login response;
+2. extracts the refresh credential;
+3. removes it from browser-visible JSON;
+4. stores it in a `Secure` + `HttpOnly` host-scoped cookie;
+5. returns the access JWT and normal non-secret response data to browser JavaScript.
+
+The access JWT remains in browser memory and is sent as a normal Bearer token for business APIs.
+
+#### Web refresh
+
+Browser JavaScript calls the approved APIM web-refresh route with credentials enabled.
+
+APIM:
+
+1. reads the approved refresh cookie;
+2. reconstructs the existing FastAPI refresh request body;
+3. forwards to the same Phase 1O refresh endpoint;
+4. returns the new access JWT to browser memory.
+
+FastAPI remains unaware of browser cookie mechanics.
+
+#### Web logout
+
+APIM reads the refresh cookie, reconstructs the existing FastAPI logout request, forwards it, and expires the browser cookie.
+
+Backend refresh-session revocation remains authoritative.
+
+### Separate customer and operations browser sessions
+
+Customer Web and Operations Web must not accidentally overwrite one another's browser refresh session.
+
+Use separate host-scoped refresh-cookie names for the two web products, selected only from an explicit allow-list of trusted origins.
+
+The exact cookie names are implementation details, but the isolation requirement is architectural.
+
+### CORS and CSRF boundary
+
+Credentialed web auth calls must allow only explicit trusted web origins.
+
+Wildcard credentialed CORS is prohibited.
+
+Refresh/logout requests must also require a Tirodhan-specific non-simple request header (or equivalent approved anti-CSRF mechanism) so a foreign origin cannot trigger credentialed session actions without a successful preflight.
+
+Normal business APIs remain Bearer-token APIs.
+
+### APIM responsibility boundary
+
+APIM web-session policy may perform only narrow transport/session adaptation such as:
+
+- refresh-cookie extraction;
+- refresh-cookie creation/expiry;
+- removal of refresh credentials from browser-visible responses;
+- construction of the existing FastAPI refresh/logout request body;
+- explicit CORS/origin checks;
+- security-sensitive response/header handling.
+
+APIM must not own:
+
+- CUSTOMER/RIDER/MANAGER authorization;
+- business/domain decisions;
+- frontend view aggregation;
+- workflow orchestration;
+- application-specific business transformations.
+
+Those remain in FastAPI or the owning frontend application.
+
+### Logging and diagnostics
+
+Raw OTP values, refresh credentials, access tokens, auth cookies, and authorization headers must not be captured in APIM diagnostics, application logs, analytics, or browser telemetry.
+
+Authentication operations require explicit log/redaction review before production.
+
+### Mandatory APIM POC gate
+
+The web-session architecture is accepted in principle but must be proven before frontend implementation depends on it.
+
+The POC must verify at minimum:
+
+1. OTP login removes the refresh credential from browser-visible JSON and sets the intended `Secure`/`HttpOnly` cookie.
+2. Web refresh converts the cookie into the existing FastAPI refresh contract.
+3. Logout revokes the FastAPI refresh session and expires the cookie.
+4. Customer Web and Operations Web sessions remain isolated.
+5. Only approved origins succeed with credentialed CORS.
+6. Foreign-origin refresh/logout attempts fail the anti-CSRF boundary.
+7. FastAPI 4xx/5xx and malformed/unexpected responses do not degrade into opaque browser CORS failures.
+8. Refresh credentials/tokens do not appear in APIM diagnostics or downstream logs.
+9. Revoked/expired refresh sessions surface the existing FastAPI authentication result correctly.
+10. APIM Consumption idle/cold-path latency is measured in the intended Azure region rather than assumed from historical figures.
+
+If the POC reveals unacceptable policy fragility, latency, security, or observability risk, the fallback is a small dedicated web BFF/session service. That fallback must not change the Phase 1O FastAPI identity model.
+
+### Deliberately open in this category
+
+This category does not yet freeze:
+
+- the concrete mobile secure-storage library;
+- the exact APIM policy XML/implementation;
+- the exact web cookie names;
+- the exact CI tooling for APIM policy tests;
+- offline logout behavior for Rider Mobile;
+- future partner authentication.
+
+---
+
 ## Next architecture category
 
-**Category 3 — Authentication and Session Architecture**
+**Category 4 — API and Contract Architecture**
 
 To be reviewed before anything from that category is committed as architecture.
