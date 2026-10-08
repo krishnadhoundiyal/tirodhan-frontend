@@ -1,5 +1,7 @@
 # Customer Mobile completion report
 
+For the subsequent narrow correction pass and its current validation/backend verification, see [PRE_MERGE_CORRECTION_REPORT.md](PRE_MERGE_CORRECTION_REPORT.md). The completion-pass evidence below is historical.
+
 Completion pass: 2026-10-08. The frontend now represents the intended customer product through typed clients, concrete repositories, query hooks and finished interactions. Live release remains dependent on the proposed backend capabilities and native device acceptance. Development fixtures are explicitly labelled, selected only with `__DEV__` and the preview flag, and never substitute for production responses.
 
 ## 1. Branch
@@ -50,7 +52,7 @@ Legacy `Idempotency-Key` compatibility is isolated in PreparedCommand transport.
 
 ## 9. Proposed APIs defined
 
-Defined 22 endpoint contracts: current principal; remote catalogue; context-bound slots; active/history list; owned immutable detail; journey; historical recommendations; payment read; checkout parameters; refund read; Customer FCM/APNs registration/revocation; notification history; profile read/update; preference read/update; favourite read/update; approved public content; payment-method metadata; feedback.
+Defined 21 endpoint contracts (after the V1 pre-merge removal of the redundant standalone journey route): current principal; remote catalogue; context-bound slots; active/history list; owned immutable detail including journey; historical recommendations; payment read; checkout parameters; refund read; Customer FCM/APNs registration/revocation; notification history; profile read/update; preference read/update; favourite read/update; approved public content; payment-method metadata; feedback.
 
 Each contract documents method/path, consumers, auth/ownership, fields and examples, nullable/optional semantics, enums, errors, caching, pagination/sort where applicable, concurrency/idempotency, privacy and frontend behavior. Existing cancellation additionally requires the documented atomic compensation enhancement. The contract specifies external business effects without prescribing backend implementation architecture.
 

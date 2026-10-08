@@ -1,4 +1,4 @@
-// Hand-mapped and reverified against backend 302c272; backend remains the authority.
+// Hand-mapped and reverified against backend afa1400; backend remains the authority.
 export interface AccessTokenResponse {
   access_token: string;
   token_type: string;

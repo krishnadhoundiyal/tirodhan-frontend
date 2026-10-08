@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  notifyManager,
+} from '@tanstack/react-query';
 import {
   render,
   fireEvent,
@@ -17,6 +21,7 @@ import { repositories } from '../lib/repositories';
 import { Body } from '../components/ui';
 import * as Location from 'expo-location';
 let mockRequestId = '11111111-1111-4111-8111-111111111111';
+let mockCompensationEnabled = true;
 jest.setTimeout(20000);
 jest.mock('expo-router', () => ({
   router: {
@@ -31,6 +36,7 @@ jest.mock('../lib/runtime', () => {
   const snapshot = { status: 'signedOut', userId: null };
   return {
     previewCatalogue: true,
+    hasCustomerCapability: () => mockCompensationEnabled,
     session: { subscribe: () => () => {}, getSnapshot: () => snapshot },
   };
 });
@@ -76,7 +82,7 @@ let client: QueryClient;
 async function show(element: React.ReactNode, seed = false, far = false) {
   client = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: Infinity },
+      queries: { retry: false, gcTime: Infinity, staleTime: 30000 },
       mutations: { retry: false, gcTime: Infinity },
     },
   });
@@ -90,14 +96,22 @@ async function show(element: React.ReactNode, seed = false, far = false) {
   );
   await waitFor(() => expect(client.isFetching()).toBe(0));
 }
+beforeAll(() => {
+  notifyManager.setScheduler((callback) => queueMicrotask(callback));
+});
+afterAll(() =>
+  notifyManager.setScheduler((callback) => setTimeout(callback, 0)),
+);
 beforeEach(() => {
   repositories.reset();
   jest.restoreAllMocks();
   jest.clearAllMocks();
   mockRequestId = '11111111-1111-4111-8111-111111111111';
+  mockCompensationEnabled = true;
 });
 afterEach(async () => {
   await waitFor(() => expect(client?.isFetching() ?? 0).toBe(0));
+  await waitFor(() => expect(client?.isMutating() ?? 0).toBe(0));
   await cleanup();
   client?.clear();
 });
@@ -247,6 +261,53 @@ test('a server-ineligible pickup never offers a cancellation command', async () 
   await show(<CollectionDetailScreen />);
   await screen.findAllByText('Collected by Tirodhan');
   expect(screen.queryByRole('button', { name: 'Cancel pickup' })).toBeNull();
+});
+
+test.each([true, false])(
+  'server-allowed cancellation action also requires deployment compensation=%s',
+  async (enabled) => {
+    mockCompensationEnabled = enabled;
+    const cancel = jest.spyOn(repositories, 'cancel');
+    await show(<CollectionDetailScreen />);
+    await screen.findByText('Collection scheduled');
+    const action = screen.queryByRole('button', { name: 'Cancel pickup' });
+    if (enabled) expect(action).toBeTruthy();
+    else expect(action).toBeNull();
+    expect(screen.queryByText('Cancel this pickup?')).toBeNull();
+    expect(cancel).not.toHaveBeenCalled();
+  },
+);
+
+test('detail seeds financial queries without initial reads; payment and refund refresh remain independent', async () => {
+  mockRequestId = '66666666-6666-4666-8666-666666666660';
+  const snapshot = await repositories.detail(mockRequestId);
+  const payment = jest.spyOn(repositories, 'payment');
+  const refunds = jest.spyOn(repositories, 'refunds');
+  await show(<CollectionDetailScreen />);
+  await screen.findByText('Refund initiated');
+  expect(payment).not.toHaveBeenCalled();
+  expect(refunds).not.toHaveBeenCalled();
+  payment.mockResolvedValue({ ...snapshot.payment, status: 'CONFIRMING' });
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Refresh payment status' }),
+  );
+  await screen.findByText('Payment awaiting confirmation');
+  refunds.mockResolvedValue({
+    refunds: snapshot.refunds.map((refund) => ({
+      ...refund,
+      status: 'COMPLETED',
+      completed_at: new Date().toISOString(),
+    })),
+  });
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Refresh refund status' }),
+  );
+  await screen.findByText('Refund completed');
+  expect(payment).toHaveBeenCalledTimes(1);
+  expect(refunds).toHaveBeenCalledTimes(1);
+  expect((await repositories.detail(mockRequestId)).refunds[0]?.status).toBe(
+    'INITIATED',
+  );
 });
 test.each([
   ['0', 'Refund initiated'],

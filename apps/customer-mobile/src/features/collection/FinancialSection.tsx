@@ -25,6 +25,11 @@ export default function FinancialSection({
 }) {
   const owner = useCustomerOwner();
   const queryClient = useQueryClient();
+  const detailReadAt = queryClient.getQueryState([
+    'collection',
+    owner,
+    detail.request_id,
+  ])?.dataUpdatedAt;
   const flow = useMemo(
     () =>
       paymentFlow(
@@ -43,6 +48,8 @@ export default function FinancialSection({
   const payment = useQuery({
     queryKey: ['payment', owner, detail.request_id],
     queryFn: ({ signal }) => repositories.payment(detail.request_id, signal),
+    initialData: detail.payment,
+    initialDataUpdatedAt: detailReadAt,
     refetchInterval: (query) =>
       ['PENDING', 'PROCESSING', 'CONFIRMING'].includes(
         query.state.data?.status ?? '',
@@ -53,6 +60,8 @@ export default function FinancialSection({
   const refunds = useQuery({
     queryKey: ['refunds', owner, detail.request_id],
     queryFn: ({ signal }) => repositories.refunds(detail.request_id, signal),
+    initialData: { refunds: detail.refunds },
+    initialDataUpdatedAt: detailReadAt,
     enabled: detail.status === 'CANCELLED' || !!detail.refunds.length,
     refetchInterval: (query) =>
       query.state.data?.refunds.some((refund) =>

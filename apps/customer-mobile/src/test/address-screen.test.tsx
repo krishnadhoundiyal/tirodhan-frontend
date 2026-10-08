@@ -4,6 +4,7 @@ import {
   fireEvent,
   screen,
   waitFor,
+  cleanup,
 } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import type { Address } from '../api/contracts';
@@ -12,6 +13,9 @@ import { ApiError } from '../api/errors';
 import { Body } from '../components/ui';
 import AddressScreen from '../features/addresses/AddressScreen';
 import { DraftProvider, useDraft } from '../features/collection/DraftProvider';
+import * as Location from 'expo-location';
+import MapPreview from '../features/addresses/MapPreview';
+jest.setTimeout(20000);
 
 jest.mock('expo-router', () => ({
   router: { canGoBack: () => true, back: jest.fn(), replace: jest.fn() },
@@ -31,10 +35,14 @@ jest.mock('../lib/runtime', () => {
 jest.mock('../components/Header', () => ({ Header: () => null }));
 jest.mock('../features/addresses/MapPreview', () => ({
   __esModule: true,
-  default: () => null,
+  default: jest.fn(() => null),
 }));
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(),
+  geocodeAsync: jest.fn(),
+  reverseGeocodeAsync: jest.fn(),
+  getCurrentPositionAsync: jest.fn(),
+  Accuracy: { Balanced: 3 },
 }));
 
 const address: Address = {
@@ -54,8 +62,9 @@ function DraftObserver() {
     </Body>
   );
 }
+let client: QueryClient;
 async function renderAddressScreen() {
-  const client = new QueryClient({
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
   await render(
@@ -67,7 +76,102 @@ async function renderAddressScreen() {
     </QueryClientProvider>,
   );
 }
-beforeEach(() => jest.clearAllMocks());
+const point = { latitude: 12.97, longitude: 77.59 };
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.mocked(api.addresses).mockResolvedValue([]);
+  jest.mocked(Location.requestForegroundPermissionsAsync).mockResolvedValue({
+    granted: false,
+  } as Location.LocationPermissionResponse);
+  jest.mocked(Location.geocodeAsync).mockResolvedValue([point]);
+  jest
+    .mocked(Location.reverseGeocodeAsync)
+    .mockResolvedValue([
+      { name: 'Search result', street: 'Temple Road', city: 'Bengaluru' },
+    ] as Location.LocationGeocodedAddress[]);
+});
+afterEach(async () => {
+  await cleanup();
+  client.clear();
+});
+
+test('typed landmark search geocodes the entered text and selects a pin without requesting device permission', async () => {
+  await renderAddressScreen();
+  await fireEvent.changeText(
+    screen.getByLabelText('Search area, landmark or address'),
+    '  Temple Road  ',
+  );
+  await fireEvent.press(screen.getByText('Search this location →'));
+  await screen.findByText('Search result, Temple Road, Bengaluru');
+  expect(Location.geocodeAsync).toHaveBeenCalledWith('Temple Road');
+  expect(Location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  expect(Location.getCurrentPositionAsync).not.toHaveBeenCalled();
+  expect(jest.mocked(MapPreview).mock.calls.at(-1)?.[0].location).toEqual(
+    point,
+  );
+});
+
+test('current-location action requests permission before reading device position', async () => {
+  jest.mocked(Location.requestForegroundPermissionsAsync).mockResolvedValue({
+    granted: true,
+  } as Location.LocationPermissionResponse);
+  jest.mocked(Location.getCurrentPositionAsync).mockResolvedValue({
+    coords: {
+      ...point,
+      accuracy: 5,
+      altitude: 10,
+      altitudeAccuracy: 2,
+      heading: 0,
+      speed: 0,
+    },
+    timestamp: 1,
+  });
+  await renderAddressScreen();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Use current location →' }),
+  );
+  await screen.findByText('Search result, Temple Road, Bengaluru');
+  expect(Location.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
+  expect(Location.getCurrentPositionAsync).toHaveBeenCalledWith({
+    accuracy: Location.Accuracy.Balanced,
+  });
+  expect(Location.geocodeAsync).not.toHaveBeenCalled();
+  expect(jest.mocked(MapPreview).mock.calls.at(-1)?.[0].location).toEqual(
+    point,
+  );
+});
+
+test('denying current-location permission leaves typed search and manual address entry usable', async () => {
+  await renderAddressScreen();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Use current location →' }),
+  );
+  await screen.findByText(
+    'Location permission is off. Choose a saved address or add one manually.',
+  );
+  expect(Location.getCurrentPositionAsync).not.toHaveBeenCalled();
+  await fireEvent.changeText(
+    screen.getByLabelText('Search area, landmark or address'),
+    'Temple Road',
+  );
+  await fireEvent(
+    screen.getByLabelText('Search area, landmark or address'),
+    'submitEditing',
+  );
+  await screen.findByText('Search result, Temple Road, Bengaluru');
+  expect(Location.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
+  expect(Location.geocodeAsync).toHaveBeenCalledWith('Temple Road');
+  await fireEvent.press(
+    screen.getByRole('button', { name: '+ Add new address' }),
+  );
+  await fireEvent.changeText(
+    screen.getByLabelText('Complete pickup address'),
+    'Manual house address',
+  );
+  expect(screen.getByLabelText('Complete pickup address').props.value).toBe(
+    'Manual house address',
+  );
+});
 
 test('saved addresses load, selection enables continuation, archive clears the booking draft', async () => {
   let resolve!: (value: Address[]) => void;

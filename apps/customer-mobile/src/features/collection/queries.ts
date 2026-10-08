@@ -1,8 +1,13 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useSyncExternalStore } from 'react';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useEffect, useSyncExternalStore } from 'react';
 import { repositories } from '../../lib/repositories';
 import { session } from '../../lib/runtime';
 import { catalogueFreshness } from './catalogue';
+import { isExpiredCursor } from '../../api/errors';
 export function useCustomerOwner() {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return state.userId ?? 'development-preview';
@@ -27,13 +32,22 @@ export function useRecommendations() {
 }
 export function useCollections(view: 'active' | 'history') {
   const owner = useCustomerOwner();
-  return useInfiniteQuery({
+  const queryClient = useQueryClient();
+  const query = useInfiniteQuery({
     queryKey: ['collections', owner, view],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       repositories.collections(view, pageParam, signal),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
   });
+  useEffect(() => {
+    if (query.isFetchNextPageError && isExpiredCursor(query.error))
+      void queryClient.resetQueries({
+        queryKey: ['collections', owner, view],
+        exact: true,
+      });
+  }, [queryClient, query.error, query.isFetchNextPageError, owner, view]);
+  return query;
 }
 export function useCollectionDetail(id: string) {
   const owner = useCustomerOwner();

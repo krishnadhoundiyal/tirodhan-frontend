@@ -1,10 +1,10 @@
 # Customer Mobile backend contracts
 
-Canonical handoff · 2026-10-08. Backend READ ONLY verification: C:\Users\91956\Tirodhan\tirodhan at `302c272d902b0adedb2cbf5b0a965f23c3f07673`. Sources: src/tirodhan/api/routes/{auth,addresses,serviceability,collection_requests,payments}.py; dependencies; customer, collection, payment/refund services and relevant ADRs. Examples are invented nonproduction data. PROPOSED does not mean currently implemented.
+Canonical handoff · reverified 2026-10-09 against backend remote main `afa140012db29ec0e83c25f3ff378765a7fe7b88`. Read-only route/model inspection and complete commit comparisons confirm unchanged application API/domain contracts from review revision `4994089a0bd5f7317bba1ab49cdfb8d4cec0241a` and the prior verification. Local backend checkout C:\Users\91956\Tirodhan\tirodhan remains unchanged at `302c272d902b0adedb2cbf5b0a965f23c3f07673`; no fetch, checkout or backend write was performed. Sources: src/tirodhan/api/routes/{auth,addresses,serviceability,collection_requests,payments}.py; dependencies; customer, collection, payment/refund services and relevant ADRs. Examples are invented nonproduction data. PROPOSED does not mean currently implemented.
 
 ## Activation and status
 
-EXISTING paths/bodies remain compatible, including temporary Idempotency-Key adaptation. PROPOSED typed clients, concrete repositories and screens are disabled before HTTP until the deployed backend supports them. EXPO_PUBLIC_CUSTOMER_CAPABILITIES is a comma-separated deployment manifest: principal,catalogue,slots,collections,journey,recommendations,payment,checkout,refunds,push,notifications,profile,preferences,content,favourites,paymentMethods,feedback,cancellationCompensation. Enable only verified deployed capabilities. This is not authorization; the backend independently enforces authenticated identity, active roles and resource ownership. Cancellation requires the compensation enhancement below, not merely the existing cancel route.
+EXISTING paths/bodies remain compatible, including temporary Idempotency-Key adaptation. PROPOSED typed clients, concrete repositories and screens are disabled before HTTP until the deployed backend supports them. EXPO_PUBLIC_CUSTOMER_CAPABILITIES is a comma-separated deployment manifest: principal,catalogue,slots,collections,recommendations,payment,checkout,refunds,push,notifications,profile,preferences,content,favourites,paymentMethods,feedback,cancellationCompensation. Enable only verified deployed capabilities. This is not authorization; the backend independently enforces authenticated identity, active roles and resource ownership. Cancellation requires the compensation enhancement below, not merely the existing cancel route.
 
 ## Common field, cache, error and command semantics
 
@@ -521,7 +521,6 @@ Pagination, sort, cache, privacy and frontend behavior: No pagination/cache. Thi
 | Pickup slot availability                       | GET /v1/customer/pickup-slots?serviceability_context_id=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb | slots           | PROPOSED |
 | Active and historical collections              | GET /v1/customer/collection-requests?view=active&limit=20                                    | collections     | PROPOSED |
 | Owned collection detail                        | GET /v1/customer/collection-requests/11111111-1111-4111-8111-111111111111                    | collections     | PROPOSED |
-| Collection journey                             | GET /v1/customer/collection-requests/11111111-1111-4111-8111-111111111111/journey            | journey         | PROPOSED |
 | Prior-collection category recommendations      | GET /v1/customer/recommendations/collection-categories                                       | recommendations | PROPOSED |
 | Authoritative payment status                   | GET /v1/customer/collection-requests/11111111-1111-4111-8111-111111111111/payment            | payment         | PROPOSED |
 | Coherent native checkout parameters            | GET /v1/customer/payment-attempts/{payment_attempt_id}/checkout                              | checkout        | PROPOSED |
@@ -747,7 +746,7 @@ Idempotency/concurrency: Read-only, no command key; enforce owner and return per
 
 Errors: 401 invalid/revoked credential;403 forbidden active principal;404 missing or non-owned resource without identity disclosure;422 invalid parameter;429 rate limited;503 unavailable. Never return raw operational exception text. 409 expired/ineligible context or CURSOR_EXPIRED.
 
-Frontend behavior: Infinite pages with duplicate-id suppression, explicit load-more and pull-refresh. Active vs History segments share ownership-keyed reads; Home displays an active summary. Never synthesize records from local create responses.
+Frontend behavior: Infinite pages with duplicate-id suppression, explicit load-more and pull-refresh. A next-page 409 CURSOR_EXPIRED discards the complete old chain and restarts from the first page; network/5xx failure retains its cursor for ordinary retry. Active vs History segments share ownership-keyed reads; Home displays an active summary. Never synthesize records from local create responses.
 
 Backend external requirements and privacy: Active contains PENDING_PAYMENT, ACCEPTED, PRE_PLANNING, PLANNED; history CANCELLED, COMPLETED, EXPIRED. Empty success is items [], next_cursor null. Expired cursor returns 409 CURSOR_EXPIRED; refresh from first page. No full address or GPS in summary.
 
@@ -880,79 +879,15 @@ Idempotency/concurrency: Read-only, no command key; enforce owner and return per
 
 Errors: 401 invalid/revoked credential;403 forbidden active principal;404 missing or non-owned resource without identity disclosure;422 invalid parameter;429 rate limited;503 unavailable. Never return raw operational exception text.
 
-Frontend behavior: Load/pull-refresh the owned booking projection. Address is immutable booking snapshot. Display quote and authoritative cancellation eligibility. 403/404 safe unavailable state; never expose another owner.
+Frontend behavior: Load/pull-refresh the owned booking projection. Address is immutable booking snapshot. Display quote and authoritative cancellation eligibility. Destructive cancellation UI requires both cancellation.allowed=true and the cancellationCompensation deployment capability; the repository gate remains mandatory. Seed independent payment/refund query caches from this initial detail snapshot, then retain their normal freshness, polling and refetch behavior. 403/404 safe unavailable state; never expose another owner.
 
 Backend external requirements and privacy: Return one internally coherent projection, including financial and journey versions of recorded truth at read time. Quote/items remain immutable financial facts. Never re-read a changed live saved address into a historical booking. No precise GPS/internal cell/charge secrets.
 
-### journey
+### Journey projection within detail
 
-Status: PROPOSED · Capability: Collection journey · Consumer: Activity / detail refresh · Gate: `journey`
+V1 returns `journey: JourneyDto` inside `CollectionDetail`; there is no standalone journey endpoint or deployment capability. Collection detail refresh, native resume and push invalidation already refresh the complete owned projection. Independent journey polling has no current consumer.
 
-`GET /v1/customer/collection-requests/11111111-1111-4111-8111-111111111111/journey`
-
-Authentication: Bearer CUSTOMER Success: 200.
-
-Request:
-
-Path request_id UUID.
-
-Response:
-
-```json
-{
-  "request_id": "11111111-1111-4111-8111-111111111111",
-  "milestones": [
-    {
-      "code": "BOOKED",
-      "state": "COMPLETE",
-      "occurred_at": "2026-10-08T05:00:00Z",
-      "label": "Booked",
-      "detail": null,
-      "image": null
-    },
-    {
-      "code": "COLLECTED",
-      "state": "CURRENT",
-      "occurred_at": null,
-      "label": "Collected by Tirodhan",
-      "detail": "Human-powered collection",
-      "image": null
-    },
-    {
-      "code": "RECEIVED",
-      "state": "UPCOMING",
-      "occurred_at": null,
-      "label": "Authorised receiving point",
-      "detail": null,
-      "image": null
-    },
-    {
-      "code": "HANDOVER_VALIDATED",
-      "state": "UPCOMING",
-      "occurred_at": null,
-      "label": "Handover validated",
-      "detail": null,
-      "image": null
-    }
-  ],
-  "receiving_point": null,
-  "handover": {
-    "state": "NOT_RECORDED",
-    "recorded_at": null,
-    "validated_at": null
-  }
-}
-```
-
-Pagination, sorting and caching: No pagination. Milestones ordered BOOKED, COLLECTED, RECEIVED, HANDOVER_VALIDATED. Private no-store.
-
-Idempotency/concurrency: Read-only, no command key; enforce owner and return persisted authoritative projection.
-
-Errors: 401 invalid/revoked credential;403 forbidden active principal;404 missing or non-owned resource without identity disclosure;422 invalid parameter;429 rate limited;503 unavailable. Never return raw operational exception text.
-
-Frontend behavior: Show only recorded completed milestones; upcoming steps have no completed timestamps. Native resume/manual refresh/push causes authoritative refetch. Detail also includes the same projection.
-
-Backend external requirements and privacy: Home → human-powered collection → designated government/authorised receiving point → validated handover. receiving_point null until confirmed; authority_label is a safe customer description. RECORDED handover does not imply VALIDATED. Never manufacture immersion, recycling or downstream disposal after validated handover.
+Milestones are ordered BOOKED, COLLECTED, RECEIVED, HANDOVER_VALIDATED. Completed steps use only recorded timestamps; upcoming steps have no completed timestamps. The sequence is home → human-powered collection → designated government/authorised receiving point → validated handover. `receiving_point` is null until confirmed; `authority_label` is a safe customer description. RECORDED handover does not imply VALIDATED. Never manufacture immersion, recycling or downstream disposal after validated handover. The detail endpoint's ownership, errors and private/no-store caching apply to this embedded projection.
 
 ### recommendations
 
@@ -1168,7 +1103,7 @@ Idempotency/concurrency: Read-only, no command key; enforce owner and return per
 
 Errors: 401 invalid/revoked credential;403 forbidden active principal;404 missing or non-owned resource without identity disclosure;422 invalid parameter;429 rate limited;503 unavailable. Never return raw operational exception text. 409 expired/ineligible context or CURSOR_EXPIRED.
 
-Frontend behavior: Display safe history and open collection details. Deep link performs fresh ownership-checked read. Do not derive status from event text.
+Frontend behavior: Display safe history and open collection details. A next-page 409 CURSOR_EXPIRED discards all cached pages and refetches page one; ordinary network/5xx load-more failures retry the existing next-page cursor. Deep link performs fresh ownership-checked read. Do not derive status from event text.
 
 Backend external requirements and privacy: Exclude address, GPS, contact details, amounts, provider fields and internal failure descriptions. Minimal lock-screen content. History targets only owned request IDs.
 
@@ -1811,7 +1746,7 @@ export interface PaymentMethods {
   methods: { code: string; label: string; description: string }[];
 }
 
-// Hand-mapped from backend 302c272; backend remains the authority.
+// Hand-mapped from backend afa1400; backend remains the authority.
 export interface AccessTokenResponse {
   access_token: string;
   token_type: string;

@@ -23,7 +23,7 @@ import {
 import FinancialSection from './FinancialSection';
 import JourneyTimeline from '../activity/JourneyTimeline';
 import { moneyLabel } from './financial';
-import { previewCatalogue } from '../../lib/runtime';
+import { previewCatalogue, hasCustomerCapability } from '../../lib/runtime';
 import type { CollectionDetail } from '../../api/customer-contracts';
 
 function DetailContent({
@@ -36,6 +36,9 @@ function DetailContent({
   const [confirm, setConfirm] = useState(false);
   const cancel = useCancellation(detail.request_id, detail.cancellation);
   const catalogue = useCatalogue();
+  const canCancel =
+    detail.cancellation.allowed &&
+    hasCustomerCapability('cancellationCompensation');
   return (
     <View style={{ gap: 16 }}>
       <Card>
@@ -86,7 +89,7 @@ function DetailContent({
         />
       </Card>
       <FinancialSection detail={detail} />
-      {detail.cancellation.allowed && detail.status !== 'CANCELLED' && (
+      {canCancel && detail.status !== 'CANCELLED' && (
         <Button
           secondary
           label="Cancel pickup"
@@ -103,7 +106,7 @@ function DetailContent({
       )}
       <Button secondary label="Refresh pickup details" onPress={refetch} />
       <ActionModal
-        visible={confirm}
+        visible={confirm && (canCancel || cancel.isSuccess)}
         title="Cancel this pickup?"
         close={() => setConfirm(false)}
         dismissible={!cancel.isPending}
@@ -150,7 +153,10 @@ function DetailContent({
                   : 'Confirm cancellation'
               }
               busy={cancel.isPending}
-              disabled={!!cancel.error && !ambiguousCancellation(cancel.error)}
+              disabled={
+                !canCancel ||
+                (!!cancel.error && !ambiguousCancellation(cancel.error))
+              }
               onPress={() => cancel.mutate()}
             />
           </>

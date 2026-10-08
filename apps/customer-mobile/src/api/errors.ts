@@ -27,6 +27,13 @@ export const safeErrorCodes = [
   'CURSOR_EXPIRED',
 ] as const;
 export type SafeErrorCode = (typeof safeErrorCodes)[number];
+export function isExpiredCursor(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    error.code === 'CURSOR_EXPIRED'
+  );
+}
 export function safeErrorCode(body: unknown): SafeErrorCode | undefined {
   if (!body || typeof body !== 'object' || !('error' in body)) return undefined;
   const error = body.error;

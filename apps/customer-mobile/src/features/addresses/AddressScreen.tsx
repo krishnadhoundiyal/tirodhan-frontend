@@ -80,7 +80,35 @@ export default function AddressScreen() {
       setError('Please enter your complete address manually.');
     }
   };
-  const locate = async (useSearch = false) => {
+  const searchLocation = async () => {
+    const text = search.trim();
+    if (locating || !text) return;
+    const generation = ++pinGeneration.current;
+    setLocating(true);
+    setError(undefined);
+    try {
+      const [point] = await ExpoLocation.geocodeAsync(text);
+      if (generation !== pinGeneration.current) return;
+      if (!point) {
+        setError(
+          'No matching address found. Try a nearby landmark or add the address manually.',
+        );
+        return;
+      }
+      await resolvePin({
+        latitude: point.latitude,
+        longitude: point.longitude,
+      });
+    } catch {
+      if (generation === pinGeneration.current)
+        setError(
+          'We couldn’t find this location. Please choose a saved address or enter one manually.',
+        );
+    } finally {
+      setLocating(false);
+    }
+  };
+  const locate = async () => {
     if (locating) return;
     const generation = ++pinGeneration.current;
     setLocating(true);
@@ -94,34 +122,23 @@ export default function AddressScreen() {
         );
         return;
       }
-      if (useSearch) {
-        const [point] = await ExpoLocation.geocodeAsync(search.trim());
-        if (generation !== pinGeneration.current) return;
-        if (!point) {
-          setError(
-            'No matching address found. Try a nearby landmark or add the address manually.',
-          );
-          return;
-        }
-        await resolvePin(point);
-      } else {
-        const result = await ExpoLocation.getCurrentPositionAsync({
-          accuracy: ExpoLocation.Accuracy.Balanced,
-        });
-        if (generation !== pinGeneration.current) return;
-        draft.setCurrentLocation({
-          latitude: result.coords.latitude,
-          longitude: result.coords.longitude,
-        });
-        await resolvePin({
-          latitude: result.coords.latitude,
-          longitude: result.coords.longitude,
-        });
-      }
+      const result = await ExpoLocation.getCurrentPositionAsync({
+        accuracy: ExpoLocation.Accuracy.Balanced,
+      });
+      if (generation !== pinGeneration.current) return;
+      draft.setCurrentLocation({
+        latitude: result.coords.latitude,
+        longitude: result.coords.longitude,
+      });
+      await resolvePin({
+        latitude: result.coords.latitude,
+        longitude: result.coords.longitude,
+      });
     } catch {
-      setError(
-        'We couldn’t find this location. Please choose a saved address or enter one manually.',
-      );
+      if (generation === pinGeneration.current)
+        setError(
+          'We couldn’t find this location. Please choose a saved address or enter one manually.',
+        );
     } finally {
       setLocating(false);
     }
@@ -159,12 +176,12 @@ export default function AddressScreen() {
               placeholder="Search area, landmark or enter address"
               style={styles.input}
               returnKeyType="search"
-              onSubmitEditing={() => search.trim() && void locate(true)}
+              onSubmitEditing={() => void searchLocation()}
             />
             <TextAction
               label="Search this location →"
               onPress={() => {
-                if (search.trim()) void locate(true);
+                void searchLocation();
               }}
             />
             <Button

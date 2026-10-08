@@ -4,7 +4,6 @@ export type CustomerCapability =
   | 'catalogue'
   | 'slots'
   | 'collections'
-  | 'journey'
   | 'recommendations'
   | 'payment'
   | 'checkout'

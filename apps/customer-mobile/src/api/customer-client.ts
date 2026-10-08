@@ -9,7 +9,6 @@ import type {
   CustomerPreferences,
   CustomerProfile,
   FavouriteCategories,
-  JourneyDto,
   NotificationEntry,
   Page,
   PaymentMethods,
@@ -73,12 +72,6 @@ export function createCustomerApi(
       read<CollectionDetail>(
         'collections',
         `/v1/customer/collection-requests/${encodeURIComponent(id)}`,
-        signal,
-      ),
-    journey: (id: string, signal?: AbortSignal) =>
-      read<JourneyDto>(
-        'journey',
-        `/v1/customer/collection-requests/${encodeURIComponent(id)}/journey`,
         signal,
       ),
     recommendations: (signal?: AbortSignal) =>

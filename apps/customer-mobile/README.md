@@ -36,6 +36,8 @@ pnpm --filter @tirodhan/customer-mobile exec expo start --web --port 8081
 
 `__DEV__ && EXPO_PUBLIC_PREVIEW_CATALOGUE=true` selects labelled product fixtures through the same concrete repository interface: catalogue/media, saved addresses, serviceability/slots, historical recommendations, active/history/details/journey, cancellation success/race/network retry, all refund states, pending payment, profile/preferences/favourites/content/feedback/notification history. No fixture HTTP and no protected preview writes, even if real credentials exist. Release ignores the flag; local artwork imports are development-only. Public OTP remains real authentication. Fixture legal/support text is not approved production content. Logout/account switching clears query ownership and resets draft/fixture state.
 
+Cancellation UI also requires the `cancellationCompensation` deployment flag, including in development preview. Enable that flag when inspecting fixture cancellation states; protected preview writes remain blocked.
+
 ## Ownership and product behavior
 
 - `app/`: thin routes and authenticated layouts.

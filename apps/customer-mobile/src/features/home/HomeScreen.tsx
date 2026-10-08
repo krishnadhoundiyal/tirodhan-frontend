@@ -141,16 +141,6 @@ function Hero({ catalogue }: { catalogue?: Catalogue }) {
           />
         </View>
       </View>
-      <Body
-        style={{
-          textAlign: 'center',
-          color: colors.gold,
-          letterSpacing: 6,
-          marginVertical: 6,
-        }}
-      >
-        ● ○ ○ ○
-      </Body>
     </View>
   );
 }

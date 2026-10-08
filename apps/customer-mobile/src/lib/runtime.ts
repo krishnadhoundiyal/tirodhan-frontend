@@ -6,7 +6,11 @@ import { Transport } from '../api/transport';
 import { SessionStore } from '../session/store';
 import { secureCredential } from '../session/secure';
 import { notificationCredential } from '../notifications/credential';
-import { capabilityGate, isDevelopmentPreview } from '../api/capabilities';
+import {
+  capabilityGate,
+  isDevelopmentPreview,
+  type CustomerCapability,
+} from '../api/capabilities';
 import { createCustomerApi } from '../api/customer-client';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
@@ -19,14 +23,15 @@ export const previewCatalogue = isDevelopmentPreview(
   __DEV__,
   process.env.EXPO_PUBLIC_PREVIEW_CATALOGUE,
 );
-export const requireCustomerCapability = capabilityGate(
-  new Set(
-    (process.env.EXPO_PUBLIC_CUSTOMER_CAPABILITIES ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
-  ),
+const customerCapabilities = new Set(
+  (process.env.EXPO_PUBLIC_CUSTOMER_CAPABILITIES ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
 );
+export const hasCustomerCapability = (capability: CustomerCapability) =>
+  customerCapabilities.has(capability);
+export const requireCustomerCapability = capabilityGate(customerCapabilities);
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

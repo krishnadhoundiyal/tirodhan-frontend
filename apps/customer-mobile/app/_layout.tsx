@@ -27,8 +27,8 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
     >
       <Heading>Let’s try that again</Heading>
       <Body>
-        We couldn’t display this screen. Your collection state remains with
-        Tirodhan.
+        We couldn’t display this screen. Any information already confirmed by
+        Tirodhan remains unchanged.
       </Body>
       <Button label="Try again" onPress={retry} />
     </View>

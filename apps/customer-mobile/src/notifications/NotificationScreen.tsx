@@ -11,13 +11,15 @@ import {
   styles,
 } from '../components/ui';
 import { enableNotifications, permissionState } from './integration';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { repositories } from '../lib/repositories';
 import { pushLifecycle } from '../lib/runtime';
 import { useCustomerOwner } from '../features/collection/queries';
+import { isExpiredCursor } from '../api/errors';
 export default function NotificationScreen() {
   const owner = useCustomerOwner();
+  const queryClient = useQueryClient();
   const registration = useSyncExternalStore(
     pushLifecycle.subscribe,
     pushLifecycle.state,
@@ -29,6 +31,13 @@ export default function NotificationScreen() {
       repositories.notifications(pageParam, signal),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
   });
+  useEffect(() => {
+    if (history.isFetchNextPageError && isExpiredCursor(history.error))
+      void queryClient.resetQueries({
+        queryKey: ['notifications', owner],
+        exact: true,
+      });
+  }, [queryClient, history.error, history.isFetchNextPageError, owner]);
   const [permission, setPermission] = useState('Checking…');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -92,7 +101,11 @@ export default function NotificationScreen() {
           <StatusCard
             title="Updates unavailable"
             error={history.error}
-            retry={() => void history.refetch()}
+            retry={() =>
+              void (history.isFetchNextPageError
+                ? history.fetchNextPage()
+                : history.refetch())
+            }
           />
         )}
         {history.data?.pages
