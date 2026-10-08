@@ -1,0 +1,9 @@
+node_modules
+pnpm-lock.yaml
+docs/ux
+docs/FRONTEND_ARCHITECTURE.md
+.expo
+.turbo
+dist
+coverage
+.local
