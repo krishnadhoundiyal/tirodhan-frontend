@@ -1,4 +1,4 @@
-// Hand-mapped from backend main 4994089; backend remains the authority.
+// Hand-mapped and reverified against backend 302c272; backend remains the authority.
 export interface AccessTokenResponse {
   access_token: string;
   token_type: string;
@@ -31,7 +31,7 @@ export interface AddressUpdate extends AddressWrite {
 export type ServiceabilityInput = (
   | { source_address_id: string; address?: never }
   | { address: string; source_address_id?: never }
-) & { location?: Location };
+) & { location?: Location | null };
 export interface ServiceabilityContext {
   serviceability_context_id: string;
   source_address_id: string | null;
@@ -44,8 +44,8 @@ export interface ServiceabilityContext {
 }
 export interface CollectionItemInput {
   item_category_code: string;
-  declared_quantity?: number;
-  declared_weight_grams?: number;
+  declared_quantity?: number | null;
+  declared_weight_grams?: number | null;
 }
 export interface CollectionCreate {
   client_request_id: string;

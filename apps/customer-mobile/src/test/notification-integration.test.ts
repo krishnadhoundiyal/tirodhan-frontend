@@ -8,6 +8,8 @@ import {
 } from '../notifications/integration';
 jest.mock('../lib/runtime', () => ({
   queryClient: { invalidateQueries: jest.fn().mockResolvedValue(undefined) },
+  session: { getSnapshot: () => ({ userId: 'customer' }) },
+  pushLifecycle: { register: jest.fn().mockResolvedValue(undefined) },
 }));
 jest.mock('expo-device', () => ({ isDevice: true }));
 jest.mock('expo-notifications', () => ({
@@ -93,7 +95,7 @@ test('native foreground/tap listeners refetch and never consume business state',
   const response = { notification } as Notifications.NotificationResponse;
   tap(response);
   tap(response);
-  expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(3);
+  expect(queryClient.invalidateQueries).toHaveBeenCalledTimes(6);
   expect(navigate).toHaveBeenCalledTimes(1);
   expect(navigate).toHaveBeenCalledWith('/activity');
   cleanup();

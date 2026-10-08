@@ -4,7 +4,7 @@ import { TextInput, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Address, AddressWrite, Location } from '../../api/contracts';
 import type { PreparedCommand } from '../../api/transport';
-import { api } from '../../api';
+import { repositories as api } from '../../lib/repositories';
 import {
   Body,
   Button,
@@ -14,7 +14,7 @@ import {
   styles,
 } from '../../components/ui';
 import { colors } from '../../theme/tokens';
-import { userMessage } from '../../api/errors';
+import { ApiError, userMessage } from '../../api/errors';
 export default function AddressForm({
   existing,
   initialAddress,
@@ -69,7 +69,12 @@ export default function AddressForm({
       await queryClient.invalidateQueries({ queryKey: ['addresses'] });
       onDone(saved);
     } catch (error) {
-      setError(userMessage(error));
+      if (error instanceof ApiError && error.status === 409) {
+        await queryClient.invalidateQueries({ queryKey: ['addresses'] });
+        setError(
+          'This address changed. Close this form and reopen the latest address to edit it.',
+        );
+      } else setError(userMessage(error));
     }
   };
   const remove = async () => {

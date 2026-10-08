@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { router, Redirect } from 'expo-router';
-import { Image } from 'expo-image';
+import MediaImage from '../media/MediaImage';
 import { randomUUID } from 'expo-crypto';
 import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +15,6 @@ import {
 import { Brand } from '../../components/Brand';
 import { Body, Button, Heading, TextAction, styles } from '../../components/ui';
 import { colors, fonts } from '../../theme/tokens';
-import { assets } from '../collection/assets';
 import { api } from '../../api';
 import { session } from '../../lib/runtime';
 import { ApiError, userMessage } from '../../api/errors';
@@ -126,16 +125,23 @@ export default function OtpScreen() {
         <View style={{ alignItems: 'center', marginTop: 16 }}>
           <Brand />
         </View>
-        <Image
-          source={assets.otp}
-          accessibilityLabel="A lit diya with flowers"
+        <MediaImage
+          media={{
+            url: null,
+            thumbnail_url: null,
+            width: 780,
+            height: 352,
+            alt_text: 'A lit diya with flowers',
+            blurhash: null,
+            expires_at: null,
+            developmentAssetKey: 'otp',
+          }}
           style={{
             height: 176,
             width: '100%',
             marginVertical: 22,
             borderRadius: 20,
           }}
-          contentFit="cover"
         />
         <Heading>Verify mobile number</Heading>
         <Body>We have sent a 6-digit verification code to</Body>

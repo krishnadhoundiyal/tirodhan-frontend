@@ -1,9 +1,7 @@
 import { memo, useMemo } from 'react';
 import { FlatList, Pressable, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
 import { Header } from '../../components/Header';
 import {
   Body,
@@ -15,14 +13,12 @@ import {
   styles,
 } from '../../components/ui';
 import { colors, fonts } from '../../theme/tokens';
-import {
-  catalogueRepository,
-  type Category,
-  type Catalogue,
-} from '../collection/catalogue';
-import { assets } from '../collection/assets';
+import { type Category, type Catalogue } from '../collection/catalogue';
 import { useDraft } from '../collection/DraftProvider';
-import { ContractUnavailable } from '../../lib/unavailable';
+import MediaImage from '../media/MediaImage';
+import { useCatalogue, useCollections } from '../collection/queries';
+import Recommendations from './Recommendations';
+import { CollectionCard } from '../activity/ActivityScreen';
 const CategoryCard = memo(function CategoryCard({
   item,
   width,
@@ -47,12 +43,8 @@ const CategoryCard = memo(function CategoryCard({
         borderColor: selected ? colors.gold : colors.border,
       }}
     >
-      <Image
-        source={assets[item.imageAssetKey]}
-        accessibilityLabel={item.alt}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={150}
+      <MediaImage
+        media={item.image}
         style={{ height: 90, width: '100%', backgroundColor: colors.tint }}
       />
       <View style={{ padding: 9, gap: 5 }}>
@@ -98,7 +90,7 @@ function Group({
     </View>
   );
 }
-function Hero() {
+function Hero({ catalogue }: { catalogue?: Catalogue }) {
   return (
     <View style={{ paddingHorizontal: 18, marginTop: 4 }}>
       <View
@@ -109,10 +101,8 @@ function Hero() {
           minHeight: 208,
         }}
       >
-        <Image
-          source={assets.hero}
-          accessibilityLabel="Sacred idol, diya and flowers"
-          contentFit="cover"
+        <MediaImage
+          media={catalogue?.artwork.hero ?? null}
           style={{
             position: 'absolute',
             right: 0,
@@ -183,9 +173,13 @@ function QuickCategories({ catalogue }: { catalogue: Catalogue }) {
           onPress={() => toggleCategory(item.categoryCode)}
           style={{ width: 58, alignItems: 'center', gap: 6 }}
         >
-          <Image
-            source={assets[item.categoryCode]}
-            contentFit="cover"
+          <MediaImage
+            media={
+              catalogue.categories.find(
+                (category) => category.code === item.categoryCode,
+              )?.thumbnail ?? null
+            }
+            thumbnail
             style={{
               width: 56,
               height: 56,
@@ -213,12 +207,8 @@ function QuickCategories({ catalogue }: { catalogue: Catalogue }) {
 }
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
-  const query = useQuery({
-    queryKey: ['catalogue'],
-    queryFn: ({ signal }) => catalogueRepository.read(signal),
-    retry: false,
-    staleTime: Infinity,
-  });
+  const query = useCatalogue();
+  const active = useCollections('active');
   const sections = useMemo(
     () =>
       query.data?.groups
@@ -249,7 +239,7 @@ export default function HomeScreen() {
         )}
         ListHeaderComponent={
           <>
-            <Hero />
+            <Hero catalogue={query.data} />
             {query.data && <QuickCategories catalogue={query.data} />}
             {query.isPending && (
               <View style={{ padding: 18 }}>
@@ -261,16 +251,7 @@ export default function HomeScreen() {
               <View style={{ padding: 18 }}>
                 <StatusCard
                   title="Collection groups"
-                  detail={
-                    query.error instanceof ContractUnavailable
-                      ? 'Collection groups are not available yet. Please check back soon.'
-                      : undefined
-                  }
-                  error={
-                    query.error instanceof ContractUnavailable
-                      ? undefined
-                      : query.error
-                  }
+                  error={query.error}
                   retry={() => void query.refetch()}
                 />
               </View>
@@ -280,6 +261,13 @@ export default function HomeScreen() {
         ListFooterComponent={
           <View style={styles.content}>
             <Heading style={{ fontSize: 27 }}>Your Activity</Heading>
+            {active.data?.pages[0]?.items[0] && (
+              <CollectionCard
+                item={active.data.pages[0].items[0]}
+                catalogue={query.data}
+                compact
+              />
+            )}
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push('/activity')}
@@ -291,21 +279,7 @@ export default function HomeScreen() {
                 <Body>View your collection journey and past collections.</Body>
               </Card>
             </Pressable>
-            <Heading style={{ fontSize: 27 }}>
-              Popular collection groups
-            </Heading>
-            {query.data && (
-              <FlatList
-                horizontal
-                data={query.data.categories.slice(0, 4)}
-                keyExtractor={(item) => item.code}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 9 }}
-                renderItem={({ item }) => (
-                  <CategoryCard item={item} width={140} />
-                )}
-              />
-            )}
+            <Recommendations catalogue={query.data} />
           </View>
         }
       />

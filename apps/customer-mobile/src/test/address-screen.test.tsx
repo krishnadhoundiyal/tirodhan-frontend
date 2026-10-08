@@ -19,6 +19,9 @@ jest.mock('expo-router', () => ({
 jest.mock('../api', () => ({
   api: { addresses: jest.fn(), archiveAddress: jest.fn() },
 }));
+jest.mock('../lib/repositories', () => ({
+  repositories: jest.requireMock('../api').api,
+}));
 jest.mock('../lib/runtime', () => {
   const snapshot = { status: 'authenticated', userId: 'customer' };
   return {

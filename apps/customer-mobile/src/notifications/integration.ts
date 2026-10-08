@@ -1,16 +1,34 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { queryClient } from '../lib/runtime';
-import { notificationDispatcher } from './signals';
-
-let deviceToken: Notifications.DevicePushToken | null = null;
-let tokenGeneration = 0;
+import { queryClient, session, pushLifecycle } from '../lib/runtime';
+import {
+  notificationDispatcher,
+  type NotificationDestination,
+} from './signals';
+import { notificationCredential } from './credential';
 export async function permissionState() {
-  return Notifications.getPermissionsAsync();
+  return Platform.OS === 'web'
+    ? { status: 'unavailable', granted: false }
+    : Notifications.getPermissionsAsync();
+}
+async function acceptToken(
+  token: Notifications.DevicePushToken,
+  generation: number,
+) {
+  if (generation !== notificationCredential.generation()) return;
+  notificationCredential.set(token, generation);
+  if (
+    typeof token.data === 'string' &&
+    (Platform.OS === 'android' || Platform.OS === 'ios')
+  )
+    await pushLifecycle.register(
+      Platform.OS === 'android' ? 'ANDROID' : 'IOS',
+      token.data,
+    );
 }
 export async function enableNotifications() {
-  const generation = tokenGeneration;
+  const generation = notificationCredential.generation();
   if (Platform.OS === 'web' || !Device.isDevice)
     return { status: 'unavailable' as const };
   if (Platform.OS === 'android')
@@ -18,26 +36,32 @@ export async function enableNotifications() {
       name: 'Collection updates',
       importance: Notifications.AndroidImportance.DEFAULT,
     });
-  const existing = await Notifications.getPermissionsAsync();
-  const result = existing.granted
-    ? existing
-    : await Notifications.requestPermissionsAsync();
-  if (result.granted) {
-    const token = await Notifications.getDevicePushTokenAsync();
-    if (generation === tokenGeneration) deviceToken = token;
-  }
-  // Android is FCM; iOS is APNs. Never submit APNs to an FCM registration API.
-  // No customer registration endpoint currently exists; retain token in memory only.
+  const existing = await Notifications.getPermissionsAsync(),
+    result = existing.granted
+      ? existing
+      : await Notifications.requestPermissionsAsync();
+  if (result.granted)
+    await acceptToken(
+      await Notifications.getDevicePushTokenAsync(),
+      generation,
+    );
   return result;
 }
 export function clearNotificationCredential() {
-  ++tokenGeneration;
-  deviceToken = null;
+  notificationCredential.clear();
 }
-export function installNotifications(navigate: (route: '/activity') => void) {
+export function installNotifications(
+  navigate: (route: NotificationDestination) => void,
+) {
   if (Platform.OS === 'web') return () => {};
-  const refetch = () => {
-    void queryClient.invalidateQueries({ queryKey: ['activity'] });
+  const generation = notificationCredential.generation();
+  const refetch = (id?: string) => {
+    const owner = session.getSnapshot().userId;
+    void queryClient.invalidateQueries({ queryKey: ['collections', owner] });
+    void queryClient.invalidateQueries({ queryKey: ['notifications', owner] });
+    if (id)
+      for (const key of ['collection', 'payment', 'refunds'])
+        void queryClient.invalidateQueries({ queryKey: [key, owner, id] });
   };
   const dispatcher = notificationDispatcher(refetch, navigate);
   Notifications.setNotificationHandler({
@@ -65,7 +89,7 @@ export function installNotifications(navigate: (route: '/activity') => void) {
   const responseListener =
     Notifications.addNotificationResponseReceivedListener(tap);
   const rotation = Notifications.addPushTokenListener((token) => {
-    deviceToken = token;
+    void acceptToken(token, generation);
   });
   let disposed = false;
   void Notifications.getLastNotificationResponseAsync()
@@ -76,12 +100,11 @@ export function installNotifications(navigate: (route: '/activity') => void) {
       }
     })
     .catch(() => {});
-  // Existing permission may be reused without prompting; refresh acquisition after process restart.
   void Notifications.getPermissionsAsync()
     .then(async (permission) => {
       if (!disposed && permission.granted && Device.isDevice) {
         const token = await Notifications.getDevicePushTokenAsync();
-        if (!disposed) deviceToken = token;
+        if (!disposed) await acceptToken(token, generation);
       }
     })
     .catch(() => {});
@@ -95,5 +118,5 @@ export function installNotifications(navigate: (route: '/activity') => void) {
   };
 }
 export function hasDeviceToken() {
-  return deviceToken !== null;
+  return notificationCredential.has();
 }

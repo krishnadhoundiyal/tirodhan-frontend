@@ -4,7 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Header } from '../../components/Header';
-import { Body, Button, Card, Heading, styles } from '../../components/ui';
+import {
+  Body,
+  Button,
+  Card,
+  Heading,
+  TextAction,
+  styles,
+} from '../../components/ui';
+import { useQuery } from '@tanstack/react-query';
+import { repositories } from '../../lib/repositories';
+import { useCustomerOwner } from '../collection/queries';
 import { colors } from '../../theme/tokens';
 import { logout } from '../../lib/runtime';
 import { clearNotificationCredential } from '../../notifications/integration';
@@ -18,8 +28,18 @@ const sections = [
         'Manage your pickup locations',
         '/addresses',
       ],
-      ['card-outline', 'Payment Methods', 'Manage your saved payment options'],
-      ['heart-outline', 'Favourites', 'Your saved items and collections'],
+      [
+        'card-outline',
+        'Payment Methods',
+        'View available checkout options',
+        '/account-options?section=paymentMethods',
+      ],
+      [
+        'heart-outline',
+        'Favourites',
+        'Your saved collection items',
+        '/account-options?section=favourites',
+      ],
       [
         'time-outline',
         'Activity',
@@ -32,13 +52,23 @@ const sections = [
     title: 'Support',
     rows: [
       ['headset-outline', 'Help & Support', 'Get help, FAQs and contact us'],
-      ['chatbox-outline', 'Share Feedback', 'Help us improve Tirodhan'],
+      [
+        'chatbox-outline',
+        'Share Feedback',
+        'Help us improve Tirodhan',
+        '/account-options?section=feedback',
+      ],
     ],
   },
   {
     title: 'Preferences',
     rows: [
-      ['globe-outline', 'Language', 'English (India)'],
+      [
+        'globe-outline',
+        'Language',
+        'Service language & update preferences',
+        '/account-options?section=preferences',
+      ],
       [
         'notifications-outline',
         'Notifications',
@@ -69,6 +99,11 @@ const sections = [
   },
 ] as const;
 export default function AccountScreen() {
+  const owner = useCustomerOwner();
+  const profile = useQuery({
+    queryKey: ['profile', owner],
+    queryFn: ({ signal }) => repositories.profile(signal),
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const signOut = async () => {
@@ -110,14 +145,18 @@ export default function AccountScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Heading style={{ fontSize: 27 }}>
-                    Your Tirodhan account
+                    {profile.data?.display_name ?? 'Your Tirodhan account'}
                   </Heading>
                   <Body>
-                    Profile details will appear when account information is
-                    available.
+                    {profile.data?.phone_display ??
+                      'Account details are currently unavailable.'}
                   </Body>
                 </View>
               </View>
+              <TextAction
+                label="Edit profile →"
+                onPress={() => router.push('/account-options?section=profile')}
+              />
             </Card>
           </>
         }

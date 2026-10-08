@@ -13,6 +13,7 @@ import { DraftProvider } from '../src/features/collection/DraftProvider';
 import SplashScreen from '../src/features/auth/SplashScreen';
 import { Button, Heading, Body } from '../src/components/ui';
 import { colors } from '../src/theme/tokens';
+import { repositories } from '../src/lib/repositories';
 void Splash.preventAutoHideAsync().catch(() => {});
 export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return (
@@ -54,7 +55,14 @@ export default function RootLayout() {
       focusManager.setFocused(state === 'active');
       if (state === 'active') {
         void session.renewIfExpired().catch(() => {});
-        void queryClient.invalidateQueries({ queryKey: ['activity'] });
+        for (const key of [
+          'collections',
+          'collection',
+          'payment',
+          'refunds',
+          'recommendations',
+        ])
+          void queryClient.invalidateQueries({ queryKey: [key] });
       }
     });
     return () => listener.remove();
@@ -62,14 +70,19 @@ export default function RootLayout() {
   useEffect(() => {
     if (snapshot.status !== 'authenticated') return;
     return installNotifications((route) => router.navigate(route));
-  }, [snapshot.status]);
+  }, [snapshot.status, snapshot.userId]);
+  useEffect(() => {
+    repositories.reset();
+  }, [snapshot.ownerVersion]);
   if (fontError) throw new Error('Application fonts could not load');
   if (!loaded || snapshot.status === 'starting') return <SplashScreen />;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
-          <DraftProvider key={snapshot.userId ?? 'signed-out'}>
+          <DraftProvider
+            key={`${snapshot.userId ?? 'signed-out'}:${snapshot.ownerVersion}`}
+          >
             <StatusBar style="dark" />
             <Stack
               screenOptions={{

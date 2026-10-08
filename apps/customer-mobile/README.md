@@ -1,70 +1,60 @@
 # Tirodhan Customer Mobile
 
-Expo SDK 57 / React Native 0.86 / React 19.2.3, TypeScript strict, Expo Router, Hermes and React Native New Architecture. SDK 57 uses Hermes and New Architecture by default; obsolete `jsEngine`/`newArchEnabled` config fields are intentionally absent.
+Expo SDK57, React Native0.86, React19.2, strict TypeScript, Expo Router, Hermes and New Architecture. This app extends the existing frontend workspace; it does not scaffold other apps or shared packages.
 
-## Run
+## Run and validate
 
-Use Node >=22.13 and pnpm 11.25.0. From the repository root:
+Node >=22.13, pnpm11.25.0. From repository root:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm format:check
 pnpm run doctor
 pnpm dev:customer
 ```
 
-Copy `apps/customer-mobile/.env.example` to `.env` and configure the public APIM base URL. Production requires HTTPS. API host is intentionally not guessed. Credentials, OTPs and coordinates are never logged. Access tokens are private in-memory session fields; refresh credentials use SecureStore only. No remote state or query caches are persisted to ordinary storage.
+Configure `apps/customer-mobile/.env` from `.env.example`: actual HTTPS APIM base URL; verified capability manifest; optional package-restricted Android Maps key and local Firebase config. Never commit credentials/Firebase files or put secrets in EXPO_PUBLIC variables. Production gate checks the live authoritative principal; transient principal errors retain successful credentials and offer retry. Access token is memory only; refresh credential uses OS SecureStore. No persisted query cache/address/GPS.
 
-This app requires a development build, not Expo Go:
+Development build required, not Expo Go:
 
 ```sh
 pnpm --filter @tirodhan/customer-mobile android
-# macOS with Xcode:
+# macOS/Xcode:
 pnpm --filter @tirodhan/customer-mobile ios
-# Alternatively use an authenticated EAS project:
-eas build --profile development --platform android
 ```
 
-Set package-restricted `GOOGLE_MAPS_ANDROID_API_KEY` for Android map tiles. iOS uses native Apple Maps. Location permission is requested only on a location/search action; manual input works without it. Geocoding is Expo's native platform capability and does not decide business serviceability.
-
-For Android remote push, supply a local `GOOGLE_SERVICES_FILE` and matching Firebase/EAS credentials; never commit Firebase files. Permission is opt-in from Account. iOS native device tokens are APNs, so the current FCM backend needs a future agreed integration. There is no Expo Push Service dependency. Foreground/cold-start taps and app resume invalidate queries; background OS-delivered notifications work through Expo native integration. Data-only headless background business fetching is deferred until a Customer payload/read contract exists. The app always re-fetches when foregrounded.
-
-## Design preview
-
-Set `EXPO_PUBLIC_PREVIEW_CATALOGUE=true` in a development build to inspect Home/category selection/Review/Account/Activity. A persistent development banner identifies the preview. The flag is ignored when `__DEV__` is false. The fixture is editorial content only, not business data. No fake address, journey, quote, slot, role or API success is used. Login has a preview entry point; production requires actual session/principal bootstrap.
-
-Optional browser QA is a mobile viewport preview of this app, not a Customer Web implementation:
+Native maps use react-native-maps (Android configured Google Maps, iOS Apple Maps). Location/search permission is user-triggered; saved/manual addresses work without it. Browser QA uses an isolated Leaflet adapter with attribution. It does not validate native maps or create a Customer Web application.
 
 ```sh
 pnpm --filter @tirodhan/customer-mobile exec expo start --web --port 8081
 ```
 
-## Ownership
+## Explicit development preview
 
-- `app/`: routes and guarded layouts only.
-- `src/api/`: backend DTO mapping, bounded/cancellable fetch and narrow temporary header compatibility.
-- `src/session/`: secure refresh adapter, in-memory credentials, single-flight renewal and injectable live principal reader.
-- `src/features/`: auth, Home, address forms/query, local collection draft, Review, activity repository and Account.
-- `src/components/`, `src/theme/`: application-owned primitives and approved tokens/fonts.
-- `src/notifications/`: centralized native permission/token/listener and safe navigation/refetch integration.
-- `src/test/`: session concurrency, endpoint mapping, auth, notification and meaningful component interactions.
+`__DEV__ && EXPO_PUBLIC_PREVIEW_CATALOGUE=true` selects labelled product fixtures through the same concrete repository interface: catalogue/media, saved addresses, serviceability/slots, historical recommendations, active/history/details/journey, cancellation success/race/network retry, all refund states, pending payment, profile/preferences/favourites/content/feedback/notification history. No fixture HTTP and no protected preview writes, even if real credentials exist. Release ignores the flag; local artwork imports are development-only. Public OTP remains real authentication. Fixture legal/support text is not approved production content. Logout/account switching clears query ownership and resets draft/fixture state.
 
-No speculative shared packages or other apps were scaffolded. Root Turbo scripts filter to Customer Mobile.
+## Ownership and product behavior
 
-## Release limitations
+- `app/`: thin routes and authenticated layouts.
+- `src/api/`: existing DTO/client, proposed DTO/client, explicit capability gates, bounded/cancellable transport and narrow legacy-header adaptation.
+- `src/session/`: secure refresh credential, memory access token/current principal, single-flight refresh and guarded admission.
+- `src/lib/repositories.ts`: simple composition root selecting concrete HTTP or development implementation; no DI container.
+- `src/features/`: local draft/location/confirmation, RHF forms, authoritative queries, Review modal/slot/booking, Activity/history/detail/journey, independent payment/refund reads and Account flows.
+- `src/features/media/`: remote HTTPS expo-image metadata adapter, cache/placeholder/fallback and development-only local asset seam.
+- `src/notifications/`: opt-in, FCM/APNs registration, serialized rotation, revocation, strict minimal payload, duplicate navigation protection and authoritative refetch.
+- `src/test/`: meaningful endpoint, transport/session race, ownership, draft/screen, cancellation/refund and notification checks.
 
-Read [BACKEND_GAPS.md](docs/BACKEND_GAPS.md). Production admission is intentionally blocked until live principal bootstrap exists. Booking is blocked by slot discovery and approved catalogue; payment checkout is not fabricated. Account legal/support destinations await approved content/contracts. Native device testing and design acceptance are mandatory before claiming production readiness.
+Review edits items inline while retaining address and pickup context. Ambiguous booking/cancellation retries reuse their exact prepared commands. Financial truth always comes from backend. Cancelled and refund completed are independent. Address-distance warning uses only already acquired position, approximate straight-line distance and draft-local confirmation. No GPS permission solely for warning.
 
-## Design interpretation
+## Backend and release handoff
 
-Approved screen order, cream/gold palette, rounded card treatments, display serif, Inter controls, live Hindi and five navigation entries are preserved. Long lists use vertical FlatList with finite horizontal lists. The neutral “Popular collection groups” replaces personalised copy because past collections cannot be read yet. Availability/price/kiosk fixtures in reference images are omitted in favour of honest unavailable states. Reference imagery is cropped into small WebP assets using `scripts/extract-reference-assets.py`; no UI or generated Hindi is rasterized. The lotus is an app-owned vector recreation pending a canonical vector brand asset.
+[CUSTOMER_MOBILE_BACKEND_CONTRACTS.md](docs/CUSTOMER_MOBILE_BACKEND_CONTRACTS.md) defines every existing/proposed route, examples, nullable/enums, sorting/cursors/cache, concurrency, privacy, atomic cancellation compensation and safe financial projections. [BACKEND_GAPS.md](docs/BACKEND_GAPS.md) maps each missing capability to its exact section. Native checkout execution remains disabled until approved public checkout metadata/runtime and a validated provider adapter are present. Customer push requires distinct server FCM/APNs delivery, registration and session revocation semantics. Approved legal/support/media/taxonomy and actual runtime configuration remain release prerequisites.
 
-## Official compatibility references
+## Design
 
-- [Expo stable SDK reference](https://docs.expo.dev/versions/latest/)
-- [Expo notifications](https://docs.expo.dev/versions/latest/sdk/notifications/)
-- [Expo react-native-maps integration](https://docs.expo.dev/versions/latest/sdk/map-view/)
+Approved cream/gold palette, serif display, Inter controls, live Hindi, rounded imagery/cards and five tabs remain. Reference files are unchanged. Home and Activity use only server historical recommendations with exact “Based on your previous collections” copy; empty/unavailable recommendations are hidden. Journey stays home → human-powered collection → authorised receiving point → validated handover, with recorded timestamps only. Compact history imagery uses category metadata rather than stretched journey art.
 
-Exact installed dependency versions and responsibilities are recorded in `docs/IMPLEMENTATION_REPORT.md` after verification.
+See [IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) for actual verification results and remaining native work.

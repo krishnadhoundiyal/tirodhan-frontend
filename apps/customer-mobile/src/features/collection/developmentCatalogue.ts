@@ -1,4 +1,22 @@
 import type { Catalogue } from './catalogue';
+import type { Media } from '../media/model';
+export function developmentMedia(
+  key: string,
+  alt: string,
+  width = 320,
+  height = 180,
+): Media {
+  return {
+    url: null,
+    thumbnail_url: null,
+    width,
+    height,
+    alt_text: alt,
+    blurhash: null,
+    expires_at: null,
+    developmentAssetKey: key,
+  };
+}
 // Visual-only editorial fixture. These codes are NOT an approved backend taxonomy.
 const rows = [
   [
@@ -95,6 +113,13 @@ const rows = [
 ] as const;
 export const developmentCatalogue: Catalogue = {
   source: 'development',
+  version: 'development-1',
+  artwork: {
+    hero: developmentMedia('hero', 'Sacred idol, diya and flowers'),
+    home: developmentMedia('homeJourney', 'Your home'),
+    rickshaw: developmentMedia('rickshaw', 'Human-powered Tirodhan rickshaw'),
+    receiving_point: null,
+  },
   groups: [
     { code: 'floral', name: 'Floral & Organic', order: 0, active: true },
     { code: 'objects', name: 'Sacred Objects', order: 1, active: true },
@@ -108,9 +133,9 @@ export const developmentCatalogue: Catalogue = {
     description,
     order,
     active: true,
-    imageAssetKey: code,
-    thumbnailAssetKey: code,
-    alt: name,
+    image: developmentMedia(code, name),
+    thumbnail: developmentMedia(code, name),
+    input: { quantity: 'OPTIONAL', weight_grams: 'OPTIONAL' },
   })),
   quick: [
     { categoryCode: 'flowers', label: 'Flower\nGarlands' },

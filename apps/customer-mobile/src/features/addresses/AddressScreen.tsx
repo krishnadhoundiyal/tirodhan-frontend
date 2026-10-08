@@ -21,6 +21,8 @@ import type { Address, Location } from '../../api/contracts';
 import { colors } from '../../theme/tokens';
 import MapPreview from './MapPreview';
 import AddressForm from './AddressForm';
+import DistanceConfirmation from './DistanceConfirmation';
+import { needsAddressConfirmation } from './distance';
 export default function AddressScreen() {
   const query = useAddresses();
   const draft = useDraft();
@@ -31,6 +33,24 @@ export default function AddressScreen() {
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string>();
   const [form, setForm] = useState<Address | 'new' | null>(null);
+  const [distance, setDistance] = useState<number | null>(null);
+  const continueWithAddress = (confirmed = false) => {
+    if (!selected) return;
+    const warning = needsAddressConfirmation(
+      selected,
+      draft.currentLocation,
+      draft.confirmedAddress,
+    );
+    if (!confirmed && warning !== null) {
+      setDistance(warning);
+      return;
+    }
+    draft.selectAddress(selected);
+    if (confirmed) draft.confirmAddress(selected);
+    setDistance(null);
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
   const pinGeneration = useRef(0);
   const resolvePin = async (point: Location) => {
     const generation = ++pinGeneration.current;
@@ -89,7 +109,14 @@ export default function AddressScreen() {
           accuracy: ExpoLocation.Accuracy.Balanced,
         });
         if (generation !== pinGeneration.current) return;
-        await resolvePin(result.coords);
+        draft.setCurrentLocation({
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+        });
+        await resolvePin({
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+        });
       }
     } catch {
       setError(
@@ -291,16 +318,15 @@ export default function AddressScreen() {
             <Button
               label="Continue →"
               disabled={!selected}
-              onPress={() => {
-                if (selected) {
-                  draft.selectAddress(selected);
-                  if (router.canGoBack()) router.back();
-                  else router.replace('/');
-                }
-              }}
+              onPress={() => continueWithAddress()}
             />
           </View>
         }
+      />
+      <DistanceConfirmation
+        distance={distance}
+        confirm={() => continueWithAddress(true)}
+        chooseAnother={() => setDistance(null)}
       />
     </SafeAreaView>
   );

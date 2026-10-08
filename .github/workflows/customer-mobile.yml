@@ -25,6 +25,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm test
       - run: pnpm run doctor
       - run: pnpm --filter @tirodhan/customer-mobile export

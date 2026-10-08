@@ -1,171 +1,215 @@
-# Customer Mobile implementation report
+# Customer Mobile completion report
 
-Implemented on `codex/customer-mobile-production` from frontend `origin/main` at `ea2a6d86b93ea95ff46c255e496744cf3e9bbe9e`. Backend `main` inspected at `4994089a0bd5f7317bba1ab49cdfb8d4cec0241a`. The implementation commit SHA is supplied in the delivery message and available with `git log -1`. No merge, push, backend change, or other application implementation was performed.
+Completion pass: 2026-10-08. The frontend now represents the intended customer product through typed clients, concrete repositories, query hooks and finished interactions. Live release remains dependent on the proposed backend capabilities and native device acceptance. Development fixtures are explicitly labelled, selected only with `__DEV__` and the preview flag, and never substitute for production responses.
 
-This is a committed application foundation with backend-aligned integrations and guarded unavailable states. It is **not production release-ready**: the current backend cannot bootstrap a live Customer principal, discover slots, or return customer journeys. A native development build could not be launched in this environment. Those definition-of-done items remain open; passing JavaScript checks does not satisfy native acceptance.
+## 1. Branch
 
-## Delivered application and ownership
+`codex/customer-mobile-production`. The existing implementation was evolved in place. No merge or push was performed.
 
-Only `apps/customer-mobile` was created, plus root pnpm/Turbo/formatting/CI scaffolding. Original architecture and UX documents/images remain unchanged. All required frontend documents, screen specifications and eight approved PNGs were read before implementation. Backend routes, dependencies, Pydantic DTOs, services, ports, tests and relevant ADRs were inspected before adapters were written.
+## 2. Commit
 
-```text
-apps/customer-mobile/
-  app/                 Expo Router routes, layouts, product admission guard
-  assets/catalogue/    small WebP crops from approved references
-  src/
-    api/               exact backend DTOs, fetch transport, normalized errors
-    session/           memory-only access, SecureStore refresh, principal boundary
-    features/
-      auth/            Splash, Login, OTP, ephemeral challenge
-      home/            grouped catalogue and category selection
-      addresses/       authoritative queries, selection, forms, native location/map
-      collection/      local draft, repository/slot boundaries, Review
-      activity/        Active/History, journey renderer, unavailable read repository
-      account/         approved rows, navigation, sign-out
-    components/        Brand, Header, application-owned primitive UI
-    theme/             approved colors and font names
-    lib/               runtime/query ownership and unavailable-contract type
-    notifications/     native integration, safe signal dispatcher, permission UI
-    test/              interaction, contract and concurrency tests
-  scripts/             reproducible reference asset extraction
-  docs/                verified gaps and this report
-```
+This report is included in the completion commit. Its exact SHA is supplied in the delivery message and can be retrieved with `git log -1 --format=%H` from the frontend workspace.
 
-Splash, Login, OTP/error, Home, Review, Activity, Address Selection and Account are implemented. Five-entry bottom navigation includes centered Book Pickup; Account includes Activity. Bookings shares the journey presentation/query boundary. Home preserves header/address/hero/quick strip/four grouped horizontal lists/activity/recommendation section order. Catalogue metadata lives behind a repository, outside JSX.
+## 3. Base and backend verification
 
-Remote state belongs to TanStack Query, forms to React Hook Form, and transient address/category selections to the local draft provider. Logout clears remote cache and changes the draft owner. Archiving a selected saved address clears it from the draft; updating it refreshes its version. Native geocoding results are ignored after a newer pin/address selection.
+Frontend base: `225f3e14cf59f30efe7523504568b18392c9c9ad`.
 
-## Backend endpoints and execution status
+Backend inspected read-only: `C:\Users\91956\Tirodhan\tirodhan`, HEAD `302c272d902b0adedb2cbf5b0a965f23c3f07673`. Verification used its routes, DTOs, auth dependencies, address ordering, collection/planning cancellation semantics, payment/refund services and relevant ADRs. The backend worktree was clean before and after this work. No backend commands that generate, format or rewrite files were run.
 
-Every path below was verified against backend source. Adapter tests exercise exact bodies and header/version behavior; a deployed APIM URL was not supplied, so these are not live-server end-to-end claims.
+## 4. Files changed
 
-| Endpoint                                                      | Wiring                                                                                                |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| POST `/v1/auth/otp/start`                                     | Login and resend; defined `client_request_id`, `phone`; challenge held only in memory                 |
-| POST `/v1/auth/otp/verify`                                    | OTP submit/error; defined `client_login_id`, challenge reference and code; establishes secure session |
-| POST `/v1/auth/refresh`                                       | Startup, expiry and coordinated protected-call 401 renewal; defined refresh credential body           |
-| POST `/v1/auth/logout`                                        | Sign-out with refresh credential; local cleanup in `finally`                                          |
-| GET `/v1/addresses`                                           | Customer-scoped cancellable query and saved-address UI                                                |
-| POST `/v1/addresses`                                          | Address form; exact write fields                                                                      |
-| PUT `/v1/addresses/{address_id}`                              | Edit form; server `expected_version`                                                                  |
-| POST `/v1/addresses/{address_id}/archive`                     | Archive form action and query/draft cleanup                                                           |
-| POST `/v1/serviceability/contexts`                            | Review availability action using selected source-address ID                                           |
-| GET `/v1/serviceability/contexts/{context_id}`                | Persisted-state read; poll only while PENDING/unexpired; address/version guards                       |
-| POST `/v1/collection-requests`                                | Typed prepared-command adapter; UI execution blocked until real catalogue/slot contracts exist        |
-| POST `/v1/collection-requests/{request_id}/cancel`            | Typed prepared-command adapter; no invented activity action without real customer read                |
-| POST `/v1/payments/collection-requests/{request_id}/attempts` | Typed adapter; checkout execution deferred pending complete integration/configuration                 |
+Application changes are confined to `apps/customer-mobile`. The only changes outside it are the pnpm lockfile for Leaflet/types, one `format:check` step in Customer Mobile CI, and a formatter exclusion for Customer Mobile's untracked Expo-generated `expo-env.d.ts`. The delivery includes a complete file inventory below. Generated Android projects, Expo exports, browser captures and local QA scripts/logs are ignored artifacts, excluded from the commit.
 
-IDs are encoded in paths. Optional quantities/gram declarations are preserved; quotes and line amounts remain backend-owned. Unknown business statuses remain opaque DTO strings. No client price formula, H3 calculation, captured-payment state, webhook call, or fabricated API success was added.
+## 5. Architecture
 
-The six verified legacy mutation patterns require a temporary transport-only request-scoped `Idempotency-Key`. A prepared command snapshots its body and reuses its key during the same in-memory intent/401 replay; changed input or expired availability creates a new intent. There is no persistent command queue, generic feature-level key management, automatic network retry of mutations, or safe-replay promise after process death. This mismatch remains a release blocker.
+Preserved Expo development builds, Expo Router, React Native New Architecture/Hermes, strict TypeScript and existing monorepo boundaries. Removed the old unavailable collection/slot stubs and replaced them with narrow feature repositories. The canonical [backend contract handoff](CUSTOMER_MOBILE_BACKEND_CONTRACTS.md) covers existing wire compatibility and exact proposed endpoints. [BACKEND_GAPS.md](BACKEND_GAPS.md) links each deployment blocker to its contract.
 
-## Session and security
+Resolved runtime versions: Expo 57.0.27, React Native 0.86.3, React 19.2.3, Expo Router 57.0.25, TanStack Query 5.104.1, React Hook Form 7.89.0, expo-image 57.0.5, SecureStore 57.0.4, react-native-maps 1.27.2, expo-location 57.0.20, expo-notifications 57.0.22, Leaflet 1.9.4. Node 24.19.0 and pnpm 11.25.0 were used for validation.
 
-Access credentials remain private memory fields. Refresh credentials use only Expo SecureStore with device-only unlocked access; snapshots contain no credentials. Single-flight refresh handles concurrent and delayed old-token 401s, permits one replay, clears on renewal failure or a second 401, and never renews on 403. Backend `expires_in` controls lifetime. Generation guards and serialized secure writes prevent late renewal/login persistence from undoing logout.
+No global state library, Axios, local database, DI container, generic replay engine, shared API-contract package or other application implementation was introduced.
 
-No role is inferred from JWT. Production product routes fail closed until the injected principal reader can use a real backend contract. A development-only catalogue flag permits explicitly labelled design inspection, is ignored in release, and cannot enable production booking. OTP/phone challenge state is ephemeral and excluded from navigation parameters. No application logging, ordinary credential storage, analytics, or raw backend error display was added. Query cache is memory-only. Production API configuration requires HTTPS.
+## 6. State ownership and auth
 
-## Verified backend blockers
+TanStack Query owns remote reads; React Hook Form owns input; SessionStore owns credential/principal lifecycle; the feature draft owns address, selected category codes, declarations, temporary GPS coordinates and distance confirmation. Access tokens and native push tokens stay in memory. Refresh credentials use only SecureStore. The installation identifier is separate from the push token and stored in native SecureStore.
 
-Detailed source evidence and frontend consequences are in [BACKEND_GAPS.md](BACKEND_GAPS.md): missing live principal bootstrap; customer collection/list/detail/activity reads; slot discovery; actual receiving-destination/onward-processing reads; Customer push registration/replacement/revocation and payload/history contracts; catalogue/taxonomy/assets; standalone pre-create quote/authoritative customer payment read; account/profile/preferences/legal content. Current Rider-only push endpoints are not Customer endpoints. Android maps/Firebase credentials and an actual APIM host also remain deployment inputs.
+Credential authentication and principal availability are distinct. Principal loading/transient failure exposes guarded retry while retaining a successful OTP session; authoritative non-CUSTOMER identity is forbidden; principal 401 clears credentials. No JWT role inference. Generation checks prevent late principal/refresh/login results from resurrecting an old customer. Logout/account switch cancels and clears queries, clears principal and notification generations, resets fixtures and remounts the draft by owner/version.
 
-## Notification integration status
+Transport retains bounded timeout/cancellation, one 401 replay, single-flight refresh and delayed-401 handling. It never refreshes a 403. Successful malformed JSON is a protocol error; 204 does not decode JSON. Only allowlisted machine error codes affect business copy; human backend/provider text is never parsed or rendered. Prepared mutations retain their body/key across ambiguity; they do not automatically retry.
 
-Centralized Expo native integration handles opt-in permissions, existing permission reuse, Android channel creation, native token acquisition/reacquisition/rotation, foreground receipt, notification taps, last-response cold start, cleanup and sensitive token removal. Tokens stay in memory. Android native tokens are FCM; iOS tokens are APNs and are never sent to an FCM-only backend.
+## 7. DI and repositories
 
-The existing worker emits Rider `ASSIGNMENT_OFFER`; no Customer payload schema exists. Unknown/minimal signals safely navigate to Activity and refetch authoritative reads. Arbitrary URLs, payload business status and PII are ignored. Bounded duplicate-tap tracking prevents repeated navigation while preserving refetch. App resume triggers stale-query refresh and activity invalidation without any push. OS-delivered background notifications/taps are supported by the native integration; data-only headless business fetching is deferred. Real registration, revocation and end-to-end push cannot be claimed until Customer contracts and native credentials exist.
+Composition selects either concrete HTTP repositories or an explicit development implementation of the same `CustomerRepositories` interface. Injected fetch/UUID, SessionAccess, SecureCredential, PrincipalReader, native checkout and push ports remain test seams. Proposed clients enforce deployment capabilities before HTTP. These flags declare deployment availability; server authorization remains mandatory.
 
-## Validation and outstanding acceptance
+Fixtures cover address CRUD, contexts/slots, active/history pagination, owned snapshots, recorded journey, historical recommendations, all refund states, cancellation success/race/ambiguity and account/content/notification flows. They perform zero HTTP. A second transport guard blocks protected preview mutations even if credentials exist. Release ignores the preview flag. Native checkout remains disabled; fixtures never fabricate payment success.
 
-| Check                                            | Result                                                                                                                                          |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`                 | Passed with bundled Node 24.19.0 and pnpm 11.25.0                                                                                               |
-| `pnpm typecheck`                                 | Passed, strict TypeScript                                                                                                                       |
-| `pnpm lint`                                      | Passed, zero warnings                                                                                                                           |
-| `pnpm test`                                      | 7 suites / 41 tests passed; no full-screen snapshots                                                                                            |
-| Prettier                                         | Passed for all new application/root/CI files                                                                                                    |
-| `pnpm run doctor`                                | 21/21 checks passed, no exclusions; network check required Node's environment-proxy support                                                     |
-| Expo dependency compatibility                    | `expo install --check` passed                                                                                                                   |
-| Android CNG/prebuild                             | Passed, native configuration generated; generated native files are ignored                                                                      |
-| Android production export                        | Passed, Hermes bundle and asset export                                                                                                          |
-| Development web preview                          | Started locally; Headless Edge at 390×844 verified Home selection→Review, Activity, Account, Address and Login with zero page or console errors |
-| Android native development launch                | Attempted `expo run:android --no-install`; blocked by missing Android SDK/`adb`                                                                 |
-| iOS native build/device                          | Not run; Windows host has no Xcode/iOS device toolchain                                                                                         |
-| Live backend auth/mutations/payments/push        | Not exercised; no actual APIM/native configuration supplied                                                                                     |
-| Native visual fidelity/accessibility/performance | Outstanding on physical mid-range Android and iOS; not inferred from browser/Jest results                                                       |
+## 8. Existing APIs integrated
 
-Tests cover one/concurrent/delayed 401, shared renewal, one-retry limit, 403, failed renewal, logout during renewal, secure-write/logout races, server expiry and secure-only persistence; auth DTOs and actual Login/OTP interactions; saved-address loading/selection/empty/retry/archive draft cleanup and expected-version transport mapping; legacy command key reuse; optional collection quantities/weights and server pricing/payment DTOs; native permission/token/listener lifecycle, foreground/tap/duplicates/stale signals; disabled CTA, skeletons and safe error/retry states.
+Preserved all 13 verified routes: OTP start/verify, refresh/logout, address list/create/update/archive, serviceability create/read, collection create/cancel and payment-attempt creation. Exact paths and bodies are in the canonical inventory. Nullable address coordinates and optional item quantity/gram declarations match the backend. Existing address ordering is `created_at ASC, address_id ASC`.
 
-Final self-review covered product admission, sensitive storage/logging, route encoding, bounded request cancellation including body reads, stale address/serviceability results, renewal/logout races, notification cleanup and filtered ownership. The requested native-start/smoothness/visual-acceptance definition of done is explicitly **not complete**. The commit preserves reviewable work without representing it as a release candidate.
+Legacy `Idempotency-Key` compatibility is isolated in PreparedCommand transport. Quotes, payment acceptance, planning cutoff and refund creation remain backend-owned. No APIM host or deployment credentials were supplied, so this is adapter/interaction validation rather than live-server acceptance.
 
-## UX deviations and interpretations
+## 9. Proposed APIs defined
 
-- Cream/gold palette, rounded cards, Cormorant display, Inter UI, live Tiro Hindi, illustrated hero/journey, circular quick strip and four horizontal category sections are retained. Images are reference crops, not rasterized screen UI. Only five required font variants and the used Ionicons set are imported.
-- Responsive card/quick-strip dimensions prioritize readable text and touch controls rather than scaling the tall PNG as one raster image. Native safe-area, keyboard, text-scale, screen-reader and performance acceptance remains open. Browser captures alone do not establish a pixel-perfect match.
-- Primary gold CTA/active-segment labels use dark text for contrast. Brand lotus is an application-owned SVG recreation awaiting the canonical vector asset. Hero pager dots retain the approved visual treatment; there is one approved hero content panel, with no fabricated additional marketing slides.
-- “Based on your previous collections” becomes neutral “Popular collection groups” until real history exists. Mock address, journey progress, dates, prices, discounts and kiosk names are replaced with explicit unavailable/selection states. Actual receiving destinations are never invented; Review describes intended process using neutral imagery.
-- Legal/support/profile/settings destinations remain honest unavailable screens until approved text/contracts exist. Razorpay SDK is intentionally not added without usable checkout/client/read contracts.
-- Frozen `/auth/me` intent is represented by `PrincipalReader`, without issuing a nonexistent request. Product admission remains blocked. Temporary mutation-header adaptation is narrowly isolated and documented rather than promoted into a permanent architecture.
-- SDK 57 mandates Hermes/New Architecture; obsolete configuration keys are omitted. Expo Router owns routing/error boundaries/deep links; TanStack Query owns cancellation/deduplication; native platform geocoding owns address discovery; backend owns serviceability/business truth.
-- ESLint 10 is current stable; some Expo-provided React/import rules still declare older peer ranges. Official `@eslint/compat` adapts removed rule APIs, with all lint rules active and passing. Testing Library 14 uses its asynchronous API; `test-renderer` 1.2.0 is pinned because its React reconciler matches React 19.2, whereas 1.3.0 expects React 19.3. These are concrete tooling compatibility choices.
-- The stock system Node 18 is below SDK requirements; the supplied Node 24 runtime was used. Sandbox command startup repeatedly failed, so authorized shell checks ran through reviewed escalation. No automatic approval rejection occurred.
+Defined 22 endpoint contracts: current principal; remote catalogue; context-bound slots; active/history list; owned immutable detail; journey; historical recommendations; payment read; checkout parameters; refund read; Customer FCM/APNs registration/revocation; notification history; profile read/update; preference read/update; favourite read/update; approved public content; payment-method metadata; feedback.
 
-## Exact direct dependencies and responsibilities
+Each contract documents method/path, consumers, auth/ownership, fields and examples, nullable/optional semantics, enums, errors, caching, pagination/sort where applicable, concurrency/idempotency, privacy and frontend behavior. Existing cancellation additionally requires the documented atomic compensation enhancement. The contract specifies external business effects without prescribing backend implementation architecture.
 
-Installed versions below are from package manifests resolved by the committed lockfile, not merely version ranges. Expo-managed/native dependencies were installed through `expo install`; the stable framework baseline was checked against [official Expo compatibility documentation](https://docs.expo.dev/versions/latest/). [Notification](https://docs.expo.dev/versions/latest/sdk/notifications/) and [map](https://docs.expo.dev/versions/latest/sdk/map-view/) configuration follows the SDK documentation. Rule adaptation follows [official ESLint compatibility utilities](https://eslint.org/blog/2024/05/eslint-compatibility-utilities/).
+## 10. Screens and recoverable states
 
-| Runtime package                            | Installed | Concrete responsibility                                            |
-| ------------------------------------------ | --------- | ------------------------------------------------------------------ |
-| `expo`                                     | 57.0.27   | Stable Expo runtime, CLI and native configuration                  |
-| `react-native`                             | 0.86.3    | Native UI/runtime                                                  |
-| `react`                                    | 19.2.3    | Component/state model                                              |
-| `expo-router`                              | 57.0.25   | File routes, stacks/tabs, deep links and error boundary            |
-| `expo-dev-client`                          | 57.0.19   | Native development build workflow                                  |
-| `expo-constants`                           | 57.0.21   | Router/development runtime integration requirement                 |
-| `expo-linking`                             | 57.0.12   | Router's platform linking integration                              |
-| `expo-crypto`                              | 57.0.3    | Backend-defined UUID command identifiers                           |
-| `expo-secure-store`                        | 57.0.4    | OS secure refresh credential storage                               |
-| `@tanstack/react-query`                    | 5.104.1   | Server state, deduplication, cancellation, invalidation            |
-| `react-hook-form`                          | 7.89.0    | Login/OTP/address validation and submission                        |
-| `react-native-confirmation-code-field`     | 9.0.0     | OTP entry/autofill/focus behavior                                  |
-| `react-native-keyboard-controller`         | 1.21.9    | Native keyboard-aware form layout                                  |
-| `react-native-gesture-handler`             | 2.32.0    | Native navigation/gesture integration                              |
-| `react-native-safe-area-context`           | 5.7.0     | Native safe-area insets                                            |
-| `react-native-screens`                     | 4.26.2    | Native route/screen integration                                    |
-| `react-native-reanimated`                  | 4.5.1     | Expo navigation/keyboard animation integration                     |
-| `react-native-worklets`                    | 0.10.1    | Required Reanimated native runtime                                 |
-| `expo-location`                            | 57.0.20   | Opt-in location and platform geocoding                             |
-| `react-native-maps`                        | 1.27.2    | Native preview/pin map; Android config plugin                      |
-| `expo-notifications`                       | 57.0.22   | Native permission, tokens, channels and notification listeners     |
-| `expo-device`                              | 57.0.2    | Physical-device capability check for push                          |
-| `expo-image`                               | 57.0.5    | Sized, cached WebP images and transitions                          |
-| `expo-font`                                | 57.0.4    | Load only the five required live font faces                        |
-| `@expo-google-fonts/cormorant-garamond`    | 0.4.1     | Approved display serif                                             |
-| `@expo-google-fonts/inter`                 | 0.4.2     | Approved controls/body text                                        |
-| `@expo-google-fonts/tiro-devanagari-hindi` | 0.4.1     | Live Hindi wordmark/tagline typography                             |
-| `@expo/vector-icons`                       | 15.1.1    | Ionicons navigation/location/account symbols                       |
-| `react-native-svg`                         | 15.15.4   | Application-owned scalable lotus brand mark                        |
-| `expo-splash-screen`                       | 57.0.9    | Native splash lifetime while fonts/session bootstrap               |
-| `expo-status-bar`                          | 57.0.1    | Approved light-screen status-bar treatment                         |
-| `expo-system-ui`                           | 57.0.4    | Native light appearance configuration support                      |
-| `react-dom`                                | 19.2.3    | Expo browser development preview renderer                          |
-| `react-native-web`                         | 0.21.3    | Browser UI verification of Customer Mobile, not a separate web app |
+Completed Review inline add/edit/remove, optional positive quantity/weight forms, context-bound slot selection, pending-payment detail, owned collection detail, paginated Active/History, ordered journey, destructive cancellation modal, independent financial status, minimal profile/preferences/favourites/feedback forms, payment-method information, approved help/about/legal-content boundary and notification history/permission/registration state.
 
-| Development/root package        | Installed | Concrete responsibility                           |
-| ------------------------------- | --------- | ------------------------------------------------- |
-| `typescript`                    | 6.0.3     | Strict compile-time checking                      |
-| `@types/react`                  | 19.2.18   | React declarations                                |
-| `eslint`                        | 10.12.0   | Static code/rule checks                           |
-| `eslint-config-expo`            | 57.0.2    | SDK-specific flat lint configuration              |
-| `@eslint/compat`                | 2.1.1     | Adapt older plugin APIs to stable ESLint 10       |
-| `jest`                          | 29.7.0    | SDK-compatible test runner                        |
-| `jest-expo`                     | 57.0.5    | Expo native module test environment               |
-| `@react-native/jest-preset`     | 0.86.3    | Current React Native preset required by jest-expo |
-| `@testing-library/react-native` | 14.0.1    | Actual accessible component interactions          |
-| `@types/jest`                   | 29.5.14   | Typed test APIs                                   |
-| `react-test-renderer`           | 19.2.3    | Expo/RN preset's renderer dependency              |
-| `test-renderer`                 | 1.2.0     | Testing Library 14's compatible modern renderer   |
-| `prettier`                      | 3.9.9     | Root/application formatting                       |
-| `turbo`                         | 2.11.7    | Filtered monorepo quality tasks                   |
+Review preserves the address and draft while editing; it never sends the customer Home to edit items. Context source/version/expiry and slot context/availability/expiry must agree before create. PENDING contexts poll. A terminal result permits a fresh prepared check; a failed context read has explicit retry. Booking ambiguity locks changes and retains the same prepared intent. No production price formula or manufactured slot is displayed. The server quote appears after collection creation.
 
-`pnpm` 11.25.0 is the pinned workspace package manager. Expo Doctor is invoked via `pnpm dlx expo-doctor`; it is a validation tool, not a shipped runtime dependency. Native maps, location, notifications, SecureStore, font, splash and dev-client config plugins are in `app.config.ts`; EAS development/preview/production profiles are in `eas.json`. No Redux, Axios, Paper, local database, payment SDK or push-service substitute was introduced.
+Account actions route to actual feature screens with loading/error/retry/save behavior. Legal fixture text is explicitly unapproved development content. Unknown information routes do not fabricate content. Address conflict refreshes saved addresses and explains reopening the latest version.
+
+## 11. Cancellation
+
+Only the server's `cancellation.allowed` capability offers Cancel pickup. Confirmation displays pickup date/address/amount and refund expectation. Confirmation creates one cancellation command; retries after network/timeout/protocol ambiguity reuse it. Success requires a CANCELLED response and refreshes owned detail, active/history lists, recommendations, payment and refunds. 403/404/409 also refresh current authority/eligibility; only explicit machine cutoff codes produce cutoff-specific copy.
+
+Production cancellation additionally requires `cancellationCompensation`. The existing backend planning lock/reload/cutoff behavior was preserved, but its missing atomic cancellation + refund intent + durable outbox business effect is documented as a blocker. The frontend never creates a refund separately.
+
+## 12. Refunds and payment
+
+Cancellation success and refund progress are separate. Render initiated, processing, completed, confirming and needs-attention states from authoritative reads. Provider `INITIATION_UNCERTAIN` maps to safe “confirming” copy; internal terminology is absent from UI. Only a server completed state/date says refund completed. Unsettled refunds poll; missing/failed reads remain recoverable rather than implying completion.
+
+Payment reads show server truth and poll unsettled status. A thin future native coordinator retains one prepared attempt, validates owned/coherent public checkout parameters, prevents duplicate concurrent SDK launches, and rereads payment after return or dismissal. SDK callbacks cannot accept a booking. With no configured native adapter, execution is blocked before creating an attempt. The payment screen is wired to this coordinator through the composition-level nativeCheckout port, currently null. Actual provider SDK integration and native validation remain pending.
+
+## 13. Remote media
+
+Production taxonomy and media metadata come from the catalogue contract. Blob/CDN HTTPS URLs use expo-image caching, fixed layouts, accessibility text, optional blurhash and neutral error/expiry fallback. URLs with credential/userinfo or invalid expiry are rejected. Asset expiry shortens query freshness. No API credential is attached to image requests.
+
+Approved-reference WebP artwork is loaded only by explicit development asset keys inside the `__DEV__` branch. Release Android/iOS export metadata contains no WebP catalogue assets. Neutral placeholders do not claim product imagery or personalization.
+
+## 14. History, recommendations and journey
+
+Active/history queries use owner-scoped keys, opaque cursor contracts, stable sort and duplicate filtering. Pull-to-refresh, load-more, empty and error states are implemented. Historical detail uses immutable pickup address/items/quote rather than today's edited saved address.
+
+“Based on your previous collections” uses server historical category codes/rank joined to active catalogue entries. Empty/unavailable results hide the section. Development recommendations also derive from completed fixture records. Journeys use recorded ordered milestones, a human-powered collection step, an authorised receiving point only when supplied and validated handover only when recorded. Unpaid fixtures leave journey steps upcoming. No fabricated downstream disposal, ETA or collection completion.
+
+## 15. Address distance and privacy
+
+The configurable 5 km default uses local Haversine distance from an already authorised current coordinate to the selected saved pin. It is labelled approximate; absent/invalid coordinates skip the warning. No location permission is requested solely for this warning. Confirmation is bound to address ID, version and pin; address changes invalidate it. Coordinates and confirmation are ephemeral; they are not logged, persisted or placed in telemetry. Native location objects are narrowed to latitude/longitude before address DTO use.
+
+## 16. Maps
+
+Native map behavior remains in react-native-maps with native location permission/geocoding boundaries. An isolated `.web.tsx` adapter uses Leaflet, standard tiles/attribution, a draggable pickup pin and map-click selection. It is only the Customer Mobile browser preview; no Customer Web app or custom map engine was built. Tile configuration can be replaced for deployment; serviceability stays backend-owned.
+
+Expo web export warns that Leaflet's CSS local PNG URLs are unsupported. Those unused layer/default-marker resources are not used by this adapter's DivIcon and controls; the inspected preview works. Native map and geocoding have not been validated on a device.
+
+## 17. Tests
+
+Expanded from 41 tests in 7 suites to 85 tests in 13 suites. Added six suites covering actual product-route admission, transient principal retry/401/non-CUSTOMER/account switch, proposed capability and release-preview gates, transport protocol/204/abort/timeout/403 semantics, exact cancellation replay without a refund call, pagination/snapshots/all refund states, serviceability expiry/version/terminal recovery, Review inline item editing/quantity/removal and slot requirement, local distance warning without a permission request, media failure/expiry/development isolation, recommendation hiding/history coherence, push FCM/APNs rotation/revocation/generation/deduplication, and the native payment boundary.
+
+Retained existing session concurrency, refresh/logout, API body/header, address interaction, OTP and notification tests. Tests clear query clients and use appropriate mutation GC settings; Jest exits normally without forced exit.
+
+## 18. Validation evidence
+
+| Check                                           | Result                                                                                                                                                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                | PASS                                                                                                                                                                                               |
+| `pnpm typecheck`                                | PASS                                                                                                                                                                                               |
+| `pnpm lint`                                     | PASS                                                                                                                                                                                               |
+| `pnpm test`                                     | PASS, 85 tests / 13 suites; no forced exit or React lifecycle warnings in the final run                                                                                                            |
+| `pnpm format:check`                             | PASS                                                                                                                                                                                               |
+| `pnpm run doctor`                               | PASS, 21/21. First run's remote schema fetch failed with ECONNRESET; retry passed.                                                                                                                 |
+| `expo export --platform all`                    | PASS: Android/iOS Hermes bundles and web bundle/HTML/metadata. Final source rerun passed with preview flag=true. Native catalogue WebP assets: zero on both platforms.                             |
+| `expo prebuild --platform android --no-install` | PASS; generated project ignored, package manifest unchanged.                                                                                                                                       |
+| `expo run:android --no-install`                 | Attempted; blocked because Android SDK and adb are absent.                                                                                                                                         |
+| Browser, 390×844 / 360×640 / 412×915            | PASS scripted customer flows, 13 captures each, zero runtime errors. Critical modal/footer controls checked within viewport. Fresh-cache rerun passed at all three sizes with zero runtime errors. |
+
+Browser verification exercised Home, inline item modal/quantity, saved-address selection and approximate-distance confirmation, serviceability/slot/create, pending payment, history/detail, cancellation confirmation, initiated/completed refund, ambiguous same-command retry and Account. Screenshots were visually inspected, including the smallest viewport. A discovered narrow Review row was corrected and rerun. Browser verification does not establish native acceptance.
+
+The exported release web artifact was also opened with preview flag=true at export: Login appeared, the development product banner was absent, and no runtime errors occurred. Android exported 33 framework/font assets and iOS 29; neither included catalogue WebP assets.
+
+Local evidence is under `.local/qa/completion-*` (logs, browser script/results and 39 captures); generated exports are under `apps/customer-mobile/dist`. These artifacts are intentionally excluded from source control.
+
+## 19. Remaining backend/deployment blockers
+
+Implement and deploy the contracts in the canonical handoff, including principal authorization, authoritative remote catalogue/slots, owned active/history/detail/journey, historical recommendations, independent payment/refund projections, atomic cancellation compensation, native checkout parameters, Customer push registration/delivery/history and minimal account/content endpoints. Provide APIM HTTPS configuration, approved legal/support content, production media/expiry policy, Android maps/Firebase configuration and APNs/provider checkout configuration. Enable capabilities only after verified deployment. No rider registration endpoint is used for Customer push.
+
+## 20. Remaining native validation
+
+Run Android development builds on an SDK-equipped host/device and iOS on macOS/Xcode or the configured build service. Validate actual maps/pin/geocoding and permission denial, SecureStore lifecycle, OTP autofill/keyboard, safe areas/small displays/dynamic text, TalkBack/VoiceOver and modal focus, FCM/APNs registration/rotation/revocation plus foreground/background/cold-start taps, deep links, device performance and provider checkout return/dismissal/reconciliation. Exports and generated native projects do not substitute for these tests.
+
+## 21. Monorepo safety
+
+Frontend workspace modified: `C:\Users\91956\Tirodhan-frontend\tirodhan-frontend`.
+
+Backend workspace modified: **NO**.
+
+Original `docs/FRONTEND_ARCHITECTURE.md`, frozen `docs/ux/**` specifications and approved PNGs are unchanged. No other application/shared package was implemented or modified. Backend HEAD/worktree were verified unchanged. Only the existing frontend branch receives the completion commit; no merge or push.
+
+## Complete file inventory
+
+70 files, including three removed unavailable stubs.
+
+- `.github/workflows/customer-mobile.yml`
+- `.prettierignore`
+- `apps/customer-mobile/.env.example`
+- `apps/customer-mobile/app/_layout.tsx`
+- `apps/customer-mobile/app/(product)/_layout.tsx`
+- `apps/customer-mobile/app/(product)/account-options.tsx`
+- `apps/customer-mobile/app/(product)/collections/[requestId].tsx`
+- `apps/customer-mobile/app/information.tsx`
+- `apps/customer-mobile/docs/BACKEND_GAPS.md`
+- `apps/customer-mobile/docs/CUSTOMER_MOBILE_BACKEND_CONTRACTS.md`
+- `apps/customer-mobile/docs/IMPLEMENTATION_REPORT.md`
+- `apps/customer-mobile/package.json`
+- `apps/customer-mobile/README.md`
+- `apps/customer-mobile/src/api/capabilities.ts`
+- `apps/customer-mobile/src/api/contracts.ts`
+- `apps/customer-mobile/src/api/customer-client.ts`
+- `apps/customer-mobile/src/api/customer-contracts.ts`
+- `apps/customer-mobile/src/api/errors.ts`
+- `apps/customer-mobile/src/api/transport.ts`
+- `apps/customer-mobile/src/components/ActionModal.tsx`
+- `apps/customer-mobile/src/features/account/AccountOptionsScreen.tsx`
+- `apps/customer-mobile/src/features/account/AccountScreen.tsx`
+- `apps/customer-mobile/src/features/activity/ActivityScreen.tsx`
+- `apps/customer-mobile/src/features/activity/JourneyTimeline.tsx`
+- `apps/customer-mobile/src/features/activity/repository.ts`
+- `apps/customer-mobile/src/features/addresses/AddressForm.tsx`
+- `apps/customer-mobile/src/features/addresses/AddressScreen.tsx`
+- `apps/customer-mobile/src/features/addresses/distance.ts`
+- `apps/customer-mobile/src/features/addresses/DistanceConfirmation.tsx`
+- `apps/customer-mobile/src/features/addresses/MapPreview.web.tsx`
+- `apps/customer-mobile/src/features/addresses/queries.ts`
+- `apps/customer-mobile/src/features/auth/OtpScreen.tsx`
+- `apps/customer-mobile/src/features/collection/cancellation.ts`
+- `apps/customer-mobile/src/features/collection/catalogue.ts`
+- `apps/customer-mobile/src/features/collection/CollectionDetailScreen.tsx`
+- `apps/customer-mobile/src/features/collection/developmentCatalogue.ts`
+- `apps/customer-mobile/src/features/collection/developmentRepositories.ts`
+- `apps/customer-mobile/src/features/collection/DraftProvider.tsx`
+- `apps/customer-mobile/src/features/collection/financial.ts`
+- `apps/customer-mobile/src/features/collection/FinancialSection.tsx`
+- `apps/customer-mobile/src/features/collection/ItemSelector.tsx`
+- `apps/customer-mobile/src/features/collection/paymentFlow.ts`
+- `apps/customer-mobile/src/features/collection/queries.ts`
+- `apps/customer-mobile/src/features/collection/repository.ts`
+- `apps/customer-mobile/src/features/collection/ReviewScreen.tsx`
+- `apps/customer-mobile/src/features/collection/serviceabilityState.ts`
+- `apps/customer-mobile/src/features/collection/slots.ts`
+- `apps/customer-mobile/src/features/home/HomeScreen.tsx`
+- `apps/customer-mobile/src/features/home/Recommendations.tsx`
+- `apps/customer-mobile/src/features/media/MediaImage.tsx`
+- `apps/customer-mobile/src/features/media/model.ts`
+- `apps/customer-mobile/src/lib/repositories.ts`
+- `apps/customer-mobile/src/lib/runtime.ts`
+- `apps/customer-mobile/src/lib/unavailable.ts`
+- `apps/customer-mobile/src/notifications/credential.ts`
+- `apps/customer-mobile/src/notifications/integration.ts`
+- `apps/customer-mobile/src/notifications/lifecycle.ts`
+- `apps/customer-mobile/src/notifications/NotificationScreen.tsx`
+- `apps/customer-mobile/src/notifications/signals.ts`
+- `apps/customer-mobile/src/session/admission.ts`
+- `apps/customer-mobile/src/session/store.ts`
+- `apps/customer-mobile/src/test/address-screen.test.tsx`
+- `apps/customer-mobile/src/test/media-recommendations.test.tsx`
+- `apps/customer-mobile/src/test/notification-integration.test.ts`
+- `apps/customer-mobile/src/test/payment-flow.test.ts`
+- `apps/customer-mobile/src/test/product-admission.test.tsx`
+- `apps/customer-mobile/src/test/product-screens.test.tsx`
+- `apps/customer-mobile/src/test/product-state.test.ts`
+- `apps/customer-mobile/src/test/transport-completion.test.ts`
+- `pnpm-lock.yaml`

@@ -1,4 +1,4 @@
-import { ApiError } from './errors';
+import { ApiError, safeErrorCode, type SafeErrorCode } from './errors';
 
 export interface SessionAccess {
   accessToken(): string | null;
@@ -9,10 +9,11 @@ export interface PreparedCommand<T> {
   execute(signal?: AbortSignal): Promise<T>;
 }
 type Options = {
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
   authenticated?: boolean;
+  refreshOn401?: boolean;
   headers?: Record<string, string>;
 };
 // Temporary header adaptation only for verified backend routes. No persistence/queue/replay engine.
@@ -34,6 +35,7 @@ export class Transport {
     private readonly uuid: () => string,
     private readonly fetcher: typeof fetch = fetch,
     private readonly timeoutMs = 15000,
+    private readonly allowAuthenticatedMutations: () => boolean = () => true,
   ) {}
 
   command<T>(
@@ -54,6 +56,12 @@ export class Transport {
   }
 
   async request<T>(path: string, options: Options = {}): Promise<T> {
+    if (
+      options.authenticated !== false &&
+      (options.method ?? 'GET') !== 'GET' &&
+      !this.allowAuthenticatedMutations()
+    )
+      throw new ApiError(0, 'preview');
     if (!this.baseUrl || !/^https?:\/\//.test(this.baseUrl))
       throw new ApiError(0, 'configuration');
     const authenticated = options.authenticated !== false;
@@ -70,6 +78,7 @@ export class Transport {
         controller.abort();
       }, this.timeoutMs);
       let response: Response;
+      let code: SafeErrorCode | undefined;
       try {
         response = await this.fetcher(
           `${this.baseUrl.replace(/\/$/, '')}${path}`,
@@ -91,11 +100,27 @@ export class Transport {
           },
         );
         // Read inside the timeout/cancellation scope; never retain raw backend error bodies.
-        if (response.ok)
-          return (
-            response.status === 204 ? undefined : await response.json()
-          ) as T;
-      } catch {
+        if (response.ok) {
+          if (response.status === 204) return undefined as T;
+          try {
+            return (await response.json()) as T;
+          } catch (error) {
+            if (error instanceof SyntaxError)
+              throw new ApiError(response.status, 'protocol');
+            throw error;
+          }
+        }
+        if (
+          response.headers?.get('content-type')?.includes('application/json')
+        ) {
+          try {
+            code = safeErrorCode(await response.json());
+          } catch (error) {
+            if (!(error instanceof SyntaxError)) throw error;
+          }
+        }
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
         throw new ApiError(
           0,
           options.signal?.aborted
@@ -109,7 +134,7 @@ export class Transport {
         options.signal?.removeEventListener('abort', cancel);
       }
       if (response.status === 401 && authenticated) {
-        if (attempt === 1) {
+        if (attempt === 1 || options.refreshOn401 === false) {
           await this.session.clear();
           throw new ApiError(401);
         }
@@ -126,7 +151,7 @@ export class Transport {
         if (!token) throw new ApiError(401);
         continue;
       }
-      throw new ApiError(response.status);
+      throw new ApiError(response.status, 'http', code);
     }
     throw new ApiError(401);
   }
