@@ -7,8 +7,9 @@ import {
   type NotificationDestination,
 } from './signals';
 import { notificationCredential } from './credential';
+import { isExpoGoPreview } from './environment';
 export async function permissionState() {
-  return Platform.OS === 'web'
+  return Platform.OS === 'web' || isExpoGoPreview()
     ? { status: 'unavailable', granted: false }
     : Notifications.getPermissionsAsync();
 }
@@ -29,7 +30,7 @@ async function acceptToken(
 }
 export async function enableNotifications() {
   const generation = notificationCredential.generation();
-  if (Platform.OS === 'web' || !Device.isDevice)
+  if (Platform.OS === 'web' || isExpoGoPreview() || !Device.isDevice)
     return { status: 'unavailable' as const };
   if (Platform.OS === 'android')
     await Notifications.setNotificationChannelAsync('collection-updates', {
@@ -53,7 +54,7 @@ export function clearNotificationCredential() {
 export function installNotifications(
   navigate: (route: NotificationDestination) => void,
 ) {
-  if (Platform.OS === 'web') return () => {};
+  if (Platform.OS === 'web' || isExpoGoPreview()) return () => {};
   const generation = notificationCredential.generation();
   const refetch = (id?: string) => {
     const owner = session.getSnapshot().userId;

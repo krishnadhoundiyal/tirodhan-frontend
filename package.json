@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev:customer": "pnpm --filter @tirodhan/customer-mobile start",
+    "dev:customer:go": "pnpm --filter @tirodhan/customer-mobile start:go",
     "typecheck": "turbo run typecheck --filter=@tirodhan/customer-mobile",
     "lint": "turbo run lint --filter=@tirodhan/customer-mobile",
     "test": "turbo run test --filter=@tirodhan/customer-mobile",

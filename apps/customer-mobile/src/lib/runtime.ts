@@ -15,6 +15,7 @@ import { createCustomerApi } from '../api/customer-client';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { PushLifecycle } from '../notifications/lifecycle';
+import { isExpoGoPreview } from '../notifications/environment';
 
 const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 if (!__DEV__ && baseUrl && !baseUrl.startsWith('https://'))
@@ -106,7 +107,7 @@ export const pushLifecycle = new PushLifecycle(
 );
 export async function logout() {
   try {
-    if (Platform.OS !== 'web' && !previewCatalogue)
+    if (Platform.OS !== 'web' && !previewCatalogue && !isExpoGoPreview())
       await pushLifecycle.revoke().catch(() => {});
     const credential = await secureCredential.get();
     if (credential)
