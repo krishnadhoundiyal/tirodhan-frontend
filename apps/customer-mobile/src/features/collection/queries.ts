@@ -5,12 +5,15 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useSyncExternalStore } from 'react';
 import { repositories } from '../../lib/repositories';
-import { session } from '../../lib/runtime';
+import {
+  navigationSession as session,
+  navigationOwner,
+} from '../../lib/navigation';
 import { catalogueFreshness } from './catalogue';
 import { isExpiredCursor } from '../../api/errors';
 export function useCustomerOwner() {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  return state.userId ?? 'development-preview';
+  return navigationOwner(state);
 }
 export function useCatalogue() {
   return useQuery({

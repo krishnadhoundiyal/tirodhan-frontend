@@ -49,8 +49,10 @@ Get-Command node, pnpm | Select-Object Name, Source
 node --version
 pnpm --version
 pnpm install --frozen-lockfile
-$env:EXPO_PUBLIC_PREVIEW_CATALOGUE = 'true'
-pnpm dev:customer:go --lan
+Remove-Item Env:EXPO_PUBLIC_PREVIEW_CATALOGUE -ErrorAction SilentlyContinue
+$env:EXPO_PUBLIC_APP_MODE = 'SCREEN_PREVIEW'
+$env:EXPO_PUBLIC_CUSTOMER_CAPABILITIES = ''
+pnpm dev:customer:go --lan --clear
 ```
 
 No machine-wide Node installation or PATH change is needed. With an already
@@ -68,17 +70,20 @@ device-to-device traffic. Allow Expo Go's Local Network access in iOS Settings.
 Scan the terminal QR code with the iPhone Camera and choose **Open in Expo Go**.
 The terminal must say **Using Expo Go**, and the link must use `exp://`, rather
 than `exp+tirodhan-customer://expo-development-client`. Metro then bundles the actual iOS app.
-The existing labelled development catalogue opens product screens; Login's
-existing preview entry also opens them. Login and OTP still use the real backend.
-For real authentication, configure the actual API URL and verified capabilities
-in the existing `.env` workflow. Never use example URLs as working endpoints.
+SCREEN_PREVIEW opens Home directly with existing fixtures and a small Preview Mode
+label. Direct Login/OTP routes redirect Home. It requires all of `__DEV__`, Expo Go,
+and the exact mode value; outside that runtime it rejects startup. Every backend
+HTTP request is blocked, including public OTP and refresh. No customer identity,
+JWT, principal request or SecureStore auth credential is used. The deprecated
+`EXPO_PUBLIC_PREVIEW_CATALOGUE` flag is ignored, even if a local `.env` still sets it.
 
 Preview uses native Apple Maps, the existing keyboard controller, animations,
-fonts, Expo Router and SecureStore. It reuses the existing fixture system and
+fonts and Expo Router. It reuses the existing fixture system and
 does not enable checkout or cancellation capabilities. Remote push is explicitly
 unavailable in Expo Go: permission reads return `unavailable`, opt-in performs no
 permission/token/registration calls, no push listeners are installed, and logout
-skips host push revocation while keeping credential logout/session clearing. Use the
+skips host push revocation. SCREEN_PREVIEW logout resets only local queries,
+draft ownership and fixtures; NONPROD logout retains real credential/session clearing. Use the
 normal development build for APNs/FCM, notification tap acceptance, native splash
 branding, app icon and native URL scheme configuration. Notification history
 screens still render through the existing repositories.
@@ -106,12 +111,61 @@ still runs Metro. Timeouts suggest reachability, while missing native modules or
 Reanimated version errors require recording the exact module and Go version.
 Do not downgrade dependencies or bypass authentication to fix those errors.
 
-Stop Metro with Ctrl+C. Remove the process-local fixture override before normal
-backend development: `Remove-Item Env:EXPO_PUBLIC_PREVIEW_CATALOGUE`, and ensure
-`.env` also has preview disabled. `pnpm dev:customer` retains `--dev-client`.
+Stop Metro with Ctrl+C and fully close this project/force-quit Expo Go before
+switching modes. Restart Metro with `--clear`, then scan its QR again. Fast Refresh
+cannot change a running mode: the JS runtime locks its initial mode and rejects
+a different value until a clean restart. Preview identity is never persisted or
+migrated. Existing real credentials remain untouched by preview; a fresh NONPROD
+startup may resume them through the normal backend refresh/principal checks.
+
+### Real NONPROD device testing
+
+Use the same process-local Node/pnpm PATH setup above. Obtain the actual deployed
+HTTPS backend URL and its verified capability list; this repository does not
+provide a working deployment or authorize capabilities. These prompts accept
+public configuration, never credentials:
+
+```powershell
+Remove-Item Env:EXPO_PUBLIC_PREVIEW_CATALOGUE -ErrorAction SilentlyContinue
+$env:EXPO_PUBLIC_APP_MODE = 'NONPROD'
+$env:EXPO_PUBLIC_API_BASE_URL = Read-Host 'Actual deployed HTTPS nonprod backend base URL'
+$env:EXPO_PUBLIC_CUSTOMER_CAPABILITIES = Read-Host 'Comma-separated deployed and verified capability names'
+pnpm dev:customer:go --lan --clear
+```
+
+NONPROD uses unchanged OTP, backend challenge/verification, SessionStore, SecureStore,
+principal CUSTOMER admission, HTTP repositories, refresh and logout. Without a
+stored session it opens Login. Errors remain errors; no fixture fallback occurs.
+An unset/empty mode uses normal production behavior; `PRODUCTION` is also permitted.
+Unknown mode values reject startup. NONPROD requires HTTPS when a URL is configured;
+an absent URL yields the normal configuration error, not fixtures. A release bundle
+configured as SCREEN_PREVIEW rejects startup and cannot admit preview routes.
+
+Set `principal` only after `/v1/auth/me` is deployed and verified; other names are
+listed in `src/api/capabilities.ts` and the backend contract document. Keep
+`cancellationCompensation` absent until actual Batch B deployment and verification.
+Do not add it to make a preview button work. Backend/customer data, serviceability,
+slots and booking require a reachable nonprod deployment. Razorpay test payment
+execution is still unavailable: `nativeCheckout` is null. A custom development
+build plus an approved, implemented and device-validated provider adapter are
+needed; a custom build alone does not enable it. Payment/refund reads use deployed
+APIs and remain backend/webhook authoritative. Full APNs/FCM push requires a custom
+development build; Expo Go guards remain active in both modes.
+
+For that native runtime after backend configuration, use:
+
+```powershell
+pnpm dev:customer --lan --clear
+```
+
+This retains `--dev-client` and requires an already-installed custom development
+build. No native provider adapter, backend deployment or signed iOS build is
+created by this change.
 
 See [IOS_EXPO_GO_REPORT.md](docs/IOS_EXPO_GO_REPORT.md) for the investigation,
 dependency assessment, validation evidence and native-device limitations.
+See [TESTING_MODES_REPORT.md](docs/TESTING_MODES_REPORT.md) for the current mode
+architecture, verification, device acceptance steps and exact removal inventory.
 
 Native maps use react-native-maps (Android configured Google Maps, iOS Apple Maps). Location/search permission is user-triggered; saved/manual addresses work without it. Browser QA uses an isolated Leaflet adapter with attribution. It does not validate native maps or create a Customer Web application.
 
@@ -119,11 +173,21 @@ Native maps use react-native-maps (Android configured Google Maps, iOS Apple Map
 pnpm --filter @tirodhan/customer-mobile exec expo start --web --port 8081
 ```
 
-## Explicit development preview
+## Temporary screen preview
 
-`__DEV__ && EXPO_PUBLIC_PREVIEW_CATALOGUE=true` selects labelled product fixtures through the same concrete repository interface: catalogue/media, saved addresses, serviceability/slots, historical recommendations, active/history/details/journey, cancellation success/race/network retry, all refund states, pending payment, profile/preferences/favourites/content/feedback/notification history. No fixture HTTP and no protected preview writes, even if real credentials exist. Release ignores the flag; local artwork imports are development-only. Public OTP remains real authentication. Fixture legal/support text is not approved production content. Logout/account switching clears query ownership and resets draft/fixture state.
+`EXPO_PUBLIC_APP_MODE=SCREEN_PREVIEW` selects the existing concrete development
+repository only in development Expo Go. It supplies catalogue/media, saved/manual
+addresses, serviceability/slots, historical recommendations, active/history/detail/
+journey, existing refund states, pending payment, profile/preferences/favourites/
+content/feedback and notification history. Local fixture booking remains pending
+payment; checkout/payment initiation reject. Existing cancelled/refund examples
+can be inspected without enabling real cancellation. Fixture legal/support text
+is not approved production content. Preview query/draft ownership uses a synthetic
+namespace, never a customer ID. Preview is a removable development layer.
 
-Cancellation UI also requires the `cancellationCompensation` deployment flag, including in development preview. Enable that flag when inspecting fixture cancellation states; protected preview writes remain blocked.
+Cancellation UI still requires the `cancellationCompensation` deployment flag.
+Leave it disabled until the actual backend capability has been deployed and verified;
+SCREEN_PREVIEW never adds it. No new financial success simulation is introduced.
 
 ## Ownership and product behavior
 

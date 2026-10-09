@@ -1,29 +1,47 @@
 import { QueryClient } from '@tanstack/react-query';
 import { randomUUID } from 'expo-crypto';
+import { isRunningInExpoGo } from 'expo';
 import { ApiError } from '../api/errors';
 import type { AccessTokenResponse } from '../api/contracts';
 import { Transport } from '../api/transport';
 import { SessionStore } from '../session/store';
 import { secureCredential } from '../session/secure';
 import { notificationCredential } from '../notifications/credential';
-import {
-  capabilityGate,
-  isDevelopmentPreview,
-  type CustomerCapability,
-} from '../api/capabilities';
+import { capabilityGate, type CustomerCapability } from '../api/capabilities';
 import { createCustomerApi } from '../api/customer-client';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { PushLifecycle } from '../notifications/lifecycle';
 import { isExpoGoPreview } from '../notifications/environment';
+import { resolveAppMode, lockAppMode, type AppMode } from './appMode';
+import {
+  ScreenPreviewTransport,
+  blockedPreviewCredential,
+} from '../preview/isolation';
+import { previewNavigation } from '../preview/navigation';
 
 const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
-if (!__DEV__ && baseUrl && !baseUrl.startsWith('https://'))
-  throw new Error('Production API must use HTTPS');
-export const previewCatalogue = isDevelopmentPreview(
-  __DEV__,
-  process.env.EXPO_PUBLIC_PREVIEW_CATALOGUE,
+const modeGlobal = globalThis as typeof globalThis & {
+  __tirodhanCustomerModeLock?: { mode?: AppMode };
+};
+const modeLock = (modeGlobal.__tirodhanCustomerModeLock ??= {});
+export const appMode = lockAppMode(
+  resolveAppMode(
+    process.env.EXPO_PUBLIC_APP_MODE,
+    __DEV__,
+    isRunningInExpoGo(),
+  ),
+  modeLock,
 );
+if (
+  (!__DEV__ || appMode === 'NONPROD') &&
+  baseUrl &&
+  !baseUrl.startsWith('https://')
+)
+  throw new Error('Backend API must use HTTPS');
+// Compatibility name for existing screens; the old env flag is never read.
+export const previewCatalogue = appMode === 'SCREEN_PREVIEW';
+const ModeTransport = previewCatalogue ? ScreenPreviewTransport : Transport;
 const customerCapabilities = new Set<string>(
   (process.env.EXPO_PUBLIC_CUSTOMER_CAPABILITIES ?? '')
     .split(',')
@@ -47,13 +65,13 @@ export const queryClient = new QueryClient({
     mutations: { retry: false },
   },
 });
-const publicTransport = new Transport(
+const publicTransport = new ModeTransport(
   baseUrl,
   { accessToken: () => null, refresh: async () => {}, clear: async () => {} },
   randomUUID,
 );
 export const session = new SessionStore(
-  secureCredential,
+  previewCatalogue ? blockedPreviewCredential : secureCredential,
   (refresh_token) =>
     publicTransport.request<AccessTokenResponse>('/v1/auth/refresh', {
       method: 'POST',
@@ -73,7 +91,7 @@ export const session = new SessionStore(
     },
   },
 );
-export const transport = new Transport(
+export const transport = new ModeTransport(
   baseUrl,
   session,
   randomUUID,
@@ -89,6 +107,7 @@ let pushDeviceId: string | null = null;
 export const pushLifecycle = new PushLifecycle(
   customerApi,
   async () => {
+    if (previewCatalogue) throw new ApiError(0, 'preview');
     if (pushDeviceId) return pushDeviceId;
     if (Platform.OS === 'web') return (pushDeviceId = randomUUID());
     pushDeviceId = await SecureStore.getItemAsync(
@@ -106,6 +125,14 @@ export const pushLifecycle = new PushLifecycle(
   () => session.getSnapshot().userId,
 );
 export async function logout() {
+  if (previewCatalogue) {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    notificationCredential.clear();
+    pushLifecycle.clear();
+    previewNavigation.reset();
+    return;
+  }
   try {
     if (Platform.OS !== 'web' && !previewCatalogue && !isExpoGoPreview())
       await pushLifecycle.revoke().catch(() => {});

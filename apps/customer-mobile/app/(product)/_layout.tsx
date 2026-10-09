@@ -10,7 +10,8 @@ import {
   Skeleton,
   styles,
 } from '../../src/components/ui';
-import { session, logout, previewCatalogue } from '../../src/lib/runtime';
+import { logout, previewCatalogue } from '../../src/lib/runtime';
+import { navigationSession as session } from '../../src/lib/navigation';
 import { productAdmission } from '../../src/session/admission';
 import { userMessage } from '../../src/api/errors';
 export default function ProductLayout() {
@@ -53,18 +54,6 @@ export default function ProductLayout() {
   return (
     <>
       <Stack screenOptions={{ headerShown: false }} />
-      {previewCatalogue && (
-        <Body
-          style={{
-            backgroundColor: '#F3E7D5',
-            textAlign: 'center',
-            fontSize: 10,
-          }}
-        >
-          DEVELOPMENT PRODUCT PREVIEW · All records are fixtures · No server
-          writes
-        </Body>
-      )}
     </>
   );
 }

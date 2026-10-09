@@ -1,5 +1,10 @@
 # iOS Expo Go investigation and review
 
+This historical report records commit `9585b97f04946b1fea882c89cb841ac30b3cfaa6`.
+The old fixture-flag/real-OTP instructions below are superseded by
+[TESTING_MODES_REPORT.md](TESTING_MODES_REPORT.md) and the current README.
+`EXPO_PUBLIC_PREVIEW_CATALOGUE` is now deprecated and ignored.
+
 Investigation date: 9 October 2026. This is a native React Native preview using
 the existing Customer Mobile app, routes, components, styles and assets. Physical
 iPhone acceptance has not been performed. No browser preview is used as evidence.
