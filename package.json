@@ -1,0 +1,21 @@
+{
+  "name": "tirodhan-frontend",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev:customer": "pnpm --filter @tirodhan/customer-mobile start",
+    "typecheck": "turbo run typecheck --filter=@tirodhan/customer-mobile",
+    "lint": "turbo run lint --filter=@tirodhan/customer-mobile",
+    "test": "turbo run test --filter=@tirodhan/customer-mobile",
+    "doctor": "pnpm --filter @tirodhan/customer-mobile run doctor",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.8"
+  }
+}

@@ -1,0 +1,31 @@
+name: Customer Mobile quality
+on:
+  pull_request:
+    paths:
+      [
+        'apps/customer-mobile/**',
+        'package.json',
+        'pnpm-lock.yaml',
+        'pnpm-workspace.yaml',
+        'turbo.json',
+        '.github/workflows/customer-mobile.yml',
+      ]
+  push:
+    branches: ['codex/customer-mobile-production']
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm run doctor
+      - run: pnpm --filter @tirodhan/customer-mobile export

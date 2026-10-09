@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+.turbo/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+android/
+ios/
+.local/
+*.log
+google-services.json
+GoogleService-Info.plist
