@@ -23,10 +23,10 @@ export const previewCatalogue = isDevelopmentPreview(
   __DEV__,
   process.env.EXPO_PUBLIC_PREVIEW_CATALOGUE,
 );
-const customerCapabilities = new Set(
+const customerCapabilities = new Set<string>(
   (process.env.EXPO_PUBLIC_CUSTOMER_CAPABILITIES ?? '')
     .split(',')
-    .map((value) => value.trim())
+    .map((value: string) => value.trim())
     .filter(Boolean),
 );
 export const hasCustomerCapability = (capability: CustomerCapability) =>
