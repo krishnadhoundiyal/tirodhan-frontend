@@ -1,5 +1,15 @@
 # Tirodhan Customer Mobile
 
+Projected booking update (21 October 2026): Review now reads V2 projected slots;
+atomic hold, reservation binding and exact replay components use the current
+backend contract. **Live hold/booking remains disabled pending approval of physical
+mass and volume inputs.** No values are inferred from optional declared weights.
+See [PROJECTED_BOOKING_REPORT.md](docs/PROJECTED_BOOKING_REPORT.md) for verified
+contracts, restart recovery limitations, validation evidence and changed files.
+The `slots` deployment capability now covers V2 projections and holds; enable it
+only after checking the actual nonprod deployment. SCREEN_PREVIEW remains local,
+and native Razorpay checkout is still a separate increment.
+
 Expo SDK57, React Native0.86, React19.2, strict TypeScript, Expo Router, Hermes and New Architecture. This app extends the existing frontend workspace; it does not scaffold other apps or shared packages.
 
 ## Run and validate

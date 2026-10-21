@@ -7,7 +7,14 @@ import {
 } from 'react';
 import type { Address, Location } from '../../api/contracts';
 import { addressIdentity } from '../addresses/distance';
+import { BookingFlow } from './bookingFlow';
+import { BookingRecoveryStore } from './bookingRecovery';
+import { bookingRecovery } from '../../session/bookingRecovery';
+import { repositories } from '../../lib/repositories';
+import { navigationSession, navigationOwner } from '../../lib/navigation';
+import { randomUUID } from 'expo-crypto';
 interface Draft {
+  bookingFlow: BookingFlow;
   address: Address | null;
   categoryCodes: readonly string[];
   selectAddress(address: Address | null): void;
@@ -27,6 +34,28 @@ interface Draft {
 }
 const Context = createContext<Draft | null>(null);
 export function DraftProvider({ children }: PropsWithChildren) {
+  const [bookingFlow] = useState(() => {
+    const identity = () => {
+      const state = navigationSession.getSnapshot();
+      return `${navigationOwner(state)}:${state.ownerVersion}`;
+    };
+    const recovery =
+      repositories.source === 'development'
+        ? new BookingRecoveryStore({
+            get: async () => null,
+            set: async () => {},
+            remove: async () => {},
+          })
+        : bookingRecovery;
+    return new BookingFlow(
+      repositories,
+      recovery,
+      navigationOwner(navigationSession.getSnapshot()),
+      identity,
+      randomUUID,
+      Date.now,
+    );
+  });
   const [address, setAddress] = useState<Address | null>(null);
   const [categoryCodes, setCategories] = useState<readonly string[]>([]);
   const [declarations, setDeclarations] = useState<
@@ -36,9 +65,11 @@ export function DraftProvider({ children }: PropsWithChildren) {
   const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
   const value = useMemo(
     () => ({
+      bookingFlow,
       address,
       categoryCodes,
       selectAddress: (next: Address | null) => {
+        bookingFlow.setAddressBinding(addressIdentity(next));
         if (addressIdentity(next) !== addressIdentity(address))
           setConfirmedAddress(null);
         setAddress(next);
@@ -68,7 +99,14 @@ export function DraftProvider({ children }: PropsWithChildren) {
       confirmAddress: (selected?: Address) =>
         setConfirmedAddress(addressIdentity(selected ?? address)),
     }),
-    [address, categoryCodes, declarations, currentLocation, confirmedAddress],
+    [
+      address,
+      categoryCodes,
+      declarations,
+      currentLocation,
+      confirmedAddress,
+      bookingFlow,
+    ],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

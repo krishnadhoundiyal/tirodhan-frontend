@@ -50,6 +50,7 @@ export interface CollectionItemInput {
 export interface CollectionCreate {
   client_request_id: string;
   serviceability_context_id: string;
+  capacity_reservation_id?: string | null;
   slot_start: string;
   slot_end: string;
   items: CollectionItemInput[];

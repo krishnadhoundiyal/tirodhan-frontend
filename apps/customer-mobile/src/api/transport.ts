@@ -4,6 +4,7 @@ export interface SessionAccess {
   accessToken(): string | null;
   refresh(): Promise<void>;
   clear(): Promise<void>;
+  commandOwner?(): string;
 }
 export interface PreparedCommand<T> {
   execute(signal?: AbortSignal): Promise<T>;
@@ -42,6 +43,7 @@ export class Transport {
     path: string,
     options: Omit<Options, 'signal'>,
   ): PreparedCommand<T> {
+    const owner = this.session.commandOwner?.();
     const body =
       options.body === undefined
         ? undefined
@@ -50,8 +52,11 @@ export class Transport {
     if (requiresLegacyHeader(options.method ?? 'GET', path))
       headers['Idempotency-Key'] = this.uuid();
     return {
-      execute: (signal) =>
-        this.request<T>(path, { ...options, body, headers, signal }),
+      execute: (signal) => {
+        if (owner !== this.session.commandOwner?.())
+          return Promise.reject(new ApiError(401));
+        return this.request<T>(path, { ...options, body, headers, signal });
+      },
     };
   }
 
@@ -65,9 +70,15 @@ export class Transport {
     if (!this.baseUrl || !/^https?:\/\//.test(this.baseUrl))
       throw new ApiError(0, 'configuration');
     const authenticated = options.authenticated !== false;
+    const owner = this.session.commandOwner?.();
+    const assertOwner = () => {
+      if (authenticated && owner !== this.session.commandOwner?.())
+        throw new ApiError(401);
+    };
     let token = authenticated ? this.session.accessToken() : null;
     if (authenticated && !token) throw new ApiError(401);
     for (let attempt = 0; attempt < 2; attempt++) {
+      assertOwner();
       const controller = new AbortController();
       let timedOut = false;
       const cancel = () => controller.abort();
@@ -99,11 +110,14 @@ export class Transport {
                 : JSON.stringify(options.body),
           },
         );
+        assertOwner();
         // Read inside the timeout/cancellation scope; never retain raw backend error bodies.
         if (response.ok) {
           if (response.status === 204) return undefined as T;
           try {
-            return (await response.json()) as T;
+            const result = (await response.json()) as T;
+            assertOwner();
+            return result;
           } catch (error) {
             if (error instanceof SyntaxError)
               throw new ApiError(response.status, 'protocol');
@@ -134,6 +148,7 @@ export class Transport {
         options.signal?.removeEventListener('abort', cancel);
       }
       if (response.status === 401 && authenticated) {
+        assertOwner();
         if (attempt === 1 || options.refreshOn401 === false) {
           await this.session.clear();
           throw new ApiError(401);
@@ -148,6 +163,7 @@ export class Transport {
           }
         }
         token = this.session.accessToken();
+        assertOwner();
         if (!token) throw new ApiError(401);
         continue;
       }

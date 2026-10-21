@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,7 +29,9 @@ import type {
   CollectionResponse,
   ServiceabilityContext,
 } from '../../api/contracts';
-import { ApiError, userMessage } from '../../api/errors';
+import { ApiError, userMessage, ambiguousCommand } from '../../api/errors';
+import { slotSelectable, slotLabel } from '../../api/slot-contracts';
+import { PhysicalLoadRequired, RecoveryRequired } from './bookingFlow';
 import { colors } from '../../theme/tokens';
 import MediaImage from '../media/MediaImage';
 import ItemSelector from './ItemSelector';
@@ -36,13 +44,38 @@ export default function ReviewScreen() {
     catalogue = useCatalogue(),
     owner = useCustomerOwner(),
     queryClient = useQueryClient();
+  const flow = draft.bookingFlow;
+  const stage = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<unknown>(null);
+  useEffect(() => {
+    let active = true;
+    void flow
+      .initialize()
+      .then(() => {
+        if (active) setRecoveryReady(true);
+      })
+      .catch((error) => {
+        if (active) setRecoveryError(error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [flow]);
   const [now, setNow] = useState(Date.now),
     [editing, setEditing] = useState(false),
     [distance, setDistance] = useState<number | null>(null);
   const [chosen, setChosen] = useState<{
     contextId: string;
     slotId: string;
+    generation: number;
   } | null>(null);
+  const addressKey = `${owner}:${draft.address?.address_id}:${draft.address?.version}`;
+  const [selectionAddress, setSelectionAddress] = useState(addressKey);
+  if (selectionAddress !== addressKey) {
+    setSelectionAddress(addressKey);
+    setChosen(null);
+  }
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(interval);
@@ -109,21 +142,41 @@ export default function ReviewScreen() {
   const currentContext = context.data ?? check.data;
   const availability = serviceabilityState(currentContext, draft.address, now);
   const slots = useQuery({
-    queryKey: ['slots', owner, currentContext?.serviceability_context_id],
+    queryKey: [
+      'slots',
+      owner,
+      currentContext?.serviceability_context_id,
+      draft.address?.address_id,
+      draft.address?.version,
+    ],
     queryFn: ({ signal }) =>
       repositories.slots(currentContext!.serviceability_context_id, signal),
     enabled: availability === 'serviceable',
     retry: false,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const expiries =
+        query.state.data?.slots
+          .map((item) => Date.parse(item.valid_until))
+          .filter((value) => value > Date.now()) ?? [];
+      return expiries.length
+        ? Math.max(1000, Math.min(...expiries) - Date.now())
+        : false;
+    },
   });
+  const currentTime = Math.max(now, slots.dataUpdatedAt);
   const slot =
     chosen &&
     slots.data?.serviceability_context_id ===
       currentContext?.serviceability_context_id &&
     chosen.contextId === currentContext?.serviceability_context_id &&
-    Date.parse(slots.data?.expires_at ?? '') > now
+    !slots.isError &&
+    !slots.isFetching
       ? slots.data?.slots.find(
           (item) =>
-            item.slot_id === chosen.slotId && item.availability === 'AVAILABLE',
+            item.slot_start === chosen.slotId &&
+            item.generation === chosen.generation &&
+            slotSelectable(item, currentTime),
         )
       : undefined;
   const bookingCommand = useRef<PreparedCommand<CollectionResponse> | null>(
@@ -131,13 +184,44 @@ export default function ReviewScreen() {
   );
   const booking = useMutation({
     mutationFn: async () => {
+      if (repositories.source === 'backend') {
+        // A prepared command may be replayed even after projections/context/hold expire.
+        if (stage !== 'idle') return flow.submit();
+        if (
+          !slot ||
+          !currentContext ||
+          !slots.data ||
+          !selected.length ||
+          serviceabilityState(currentContext, draft.address, Date.now()) !==
+            'serviceable'
+        )
+          throw new ApiError(409, 'http', 'SLOT_UNAVAILABLE');
+        return flow.submit({
+          context: currentContext,
+          availability: slots.data,
+          slot,
+          items: selected.map((item) => ({
+            item_category_code: item.code,
+            declared_quantity:
+              item.input.quantity === 'OPTIONAL'
+                ? (draft.declarations[item.code]?.quantity ?? null)
+                : null,
+            declared_weight_grams:
+              item.input.weight_grams === 'OPTIONAL'
+                ? (draft.declarations[item.code]?.weightGrams ?? null)
+                : null,
+          })),
+          // No approved mass/volume mapping exists. Do not infer it from optional declarations.
+          load: null,
+        });
+      }
+      // Existing SCREEN_PREVIEW fixture booking remains local and never acquires real capacity.
       if (!bookingCommand.current) {
         if (
           !slot ||
           serviceabilityState(currentContext, draft.address, Date.now()) !==
             'serviceable' ||
-          Date.parse(slots.data?.expires_at ?? '') <= Date.now() ||
-          Date.parse(slot.end) <= Date.now() ||
+          !slotSelectable(slot, Date.now()) ||
           !selected.length ||
           !currentContext
         )
@@ -145,8 +229,8 @@ export default function ReviewScreen() {
         bookingCommand.current = repositories.createCollection({
           client_request_id: randomUUID(),
           serviceability_context_id: currentContext.serviceability_context_id,
-          slot_start: slot.start,
-          slot_end: slot.end,
+          slot_start: slot.slot_start,
+          slot_end: slot.slot_end,
           items: selected.map((item) => ({
             item_category_code: item.code,
             declared_quantity:
@@ -164,15 +248,21 @@ export default function ReviewScreen() {
     },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['collections', owner] });
+      if (!flow.ownsSession()) return;
       router.push({
         pathname: '/collections/[requestId]',
         params: { requestId: result.request_id },
       });
     },
     onError: (error) => {
-      if (error instanceof ApiError && error.kind === 'http') {
+      if (
+        error instanceof ApiError &&
+        error.kind === 'http' &&
+        !ambiguousCommand(error)
+      ) {
         bookingCommand.current = null;
         if (error.status === 409) {
+          setChosen(null);
           void queryClient.invalidateQueries({
             queryKey: ['serviceability', owner],
           });
@@ -182,10 +272,16 @@ export default function ReviewScreen() {
     },
   });
   const uncertain =
-    booking.isError &&
-    booking.error instanceof ApiError &&
-    ['network', 'timeout', 'protocol'].includes(booking.error.kind);
-  const locked = booking.isPending || uncertain || booking.isSuccess;
+    stage === 'uncertainHold' ||
+    stage === 'uncertainBooking' ||
+    (booking.isError && ambiguousCommand(booking.error));
+  const locked =
+    booking.isPending ||
+    uncertain ||
+    booking.isSuccess ||
+    stage !== 'idle' ||
+    !recoveryReady;
+  const loadBlocked = repositories.source === 'backend' && stage === 'idle';
   // Retain the exact prepared intent after ambiguity; edits cannot silently create a second booking.
   const confirm = (confirmed = false) => {
     const warning = needsAddressConfirmation(
@@ -316,6 +412,10 @@ export default function ReviewScreen() {
         </Card>
         <Card>
           <Heading style={{ fontSize: 25 }}>Pickup slot</Heading>
+          <Body>
+            Estimated pickup capacity. Rider assignment is confirmed through
+            operational planning.
+          </Body>
           {slots.isFetching && <Body>Loading pickup times…</Body>}
           {slots.isError && (
             <StatusCard
@@ -326,7 +426,9 @@ export default function ReviewScreen() {
           )}
           {availability === 'serviceable' &&
             slots.data &&
-            Date.parse(slots.data.expires_at) <= now && (
+            slots.data.slots.some(
+              (item) => Date.parse(item.valid_until) <= now,
+            ) && (
               <Body>
                 These pickup times have expired. Refresh availability.
               </Body>
@@ -334,18 +436,28 @@ export default function ReviewScreen() {
           {availability === 'serviceable' &&
             slots.data?.slots.map((item) => (
               <Pressable
-                key={item.slot_id}
+                key={item.slot_start}
                 accessibilityRole="radio"
-                accessibilityLabel={`${item.label}${item.availability === 'FULL' ? ' · Full' : ''}`}
+                accessibilityLabel={`${slotLabel(item)} · ${item.status}`}
                 accessibilityState={{
-                  checked: slot?.slot_id === item.slot_id,
-                  disabled: locked || item.availability !== 'AVAILABLE',
+                  checked: slot?.slot_start === item.slot_start,
+                  disabled:
+                    locked ||
+                    slots.isError ||
+                    slots.isFetching ||
+                    !slotSelectable(item, currentTime),
                 }}
-                disabled={locked || item.availability !== 'AVAILABLE'}
+                disabled={
+                  locked ||
+                  slots.isError ||
+                  slots.isFetching ||
+                  !slotSelectable(item, currentTime)
+                }
                 onPress={() =>
                   setChosen({
                     contextId: slots.data!.serviceability_context_id,
-                    slotId: item.slot_id,
+                    slotId: item.slot_start,
+                    generation: item.generation,
                   })
                 }
                 style={{
@@ -353,7 +465,7 @@ export default function ReviewScreen() {
                   padding: 12,
                   borderWidth: 1,
                   borderColor:
-                    slot?.slot_id === item.slot_id
+                    slot?.slot_start === item.slot_start
                       ? colors.gold
                       : colors.border,
                   borderRadius: 8,
@@ -361,9 +473,16 @@ export default function ReviewScreen() {
                 }}
               >
                 <Body>
-                  {slot?.slot_id === item.slot_id ? '◉ ' : '○ '}
-                  {item.label}
-                  {item.availability === 'FULL' ? ' · Full' : ''}
+                  {slot?.slot_start === item.slot_start ? '◉ ' : '○ '}
+                  {slotLabel(item)} ·{' '}
+                  {
+                    {
+                      AVAILABLE: 'Available',
+                      LIMITED: 'Limited',
+                      FULL: 'Full',
+                      UNKNOWN: 'Availability unknown',
+                    }[item.status]
+                  }
                 </Body>
               </Pressable>
             ))}
@@ -372,6 +491,55 @@ export default function ReviewScreen() {
           )}
           {availability === 'serviceable' && slots.data?.slots.length === 0 && (
             <Body>No pickup times are currently available.</Body>
+          )}
+          {availability === 'serviceable' && (
+            <TextAction
+              label="Refresh pickup times"
+              onPress={() => {
+                setChosen(null);
+                void slots.refetch();
+              }}
+            />
+          )}
+          {loadBlocked && (
+            <Body accessibilityRole="alert">
+              Booking is temporarily unavailable while Tirodhan confirms the
+              required pickup load details.
+            </Body>
+          )}
+          {flow.getHold() && (
+            <Body>
+              Hold booking cutoff:{' '}
+              {new Date(flow.getHold()!.book_by).toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+              })}{' '}
+              IST. Payment is still pending.
+            </Body>
+          )}
+          {(stage === 'restart' || !!recoveryError) && (
+            <StatusCard
+              title="Previous booking needs checking"
+              detail="Recovery information was retained. Check Bookings before starting another booking; the original submission may have completed."
+              error={
+                recoveryError instanceof RecoveryRequired
+                  ? undefined
+                  : (recoveryError ?? undefined)
+              }
+              retry={() => {
+                void flow
+                  .recoverRestart()
+                  .then((id) => {
+                    setRecoveryReady(true);
+                    setRecoveryError(null);
+                    if (id)
+                      router.push({
+                        pathname: '/collections/[requestId]',
+                        params: { requestId: id },
+                      });
+                  })
+                  .catch(setRecoveryError);
+              }}
+            />
           )}
         </Card>
         <Card>
@@ -442,7 +610,11 @@ export default function ReviewScreen() {
           <Body accessibilityRole="alert" style={{ color: colors.error }}>
             {uncertain
               ? 'We couldn’t confirm the booking result. Retry this same booking before making changes, or check Bookings.'
-              : userMessage(booking.error)}
+              : booking.error instanceof PhysicalLoadRequired
+                ? 'Booking is waiting for approved pickup load details.'
+                : booking.error instanceof RecoveryRequired
+                  ? 'Check the previous booking in Bookings before starting another.'
+                  : userMessage(booking.error)}
           </Body>
         )}
       </ScrollView>
@@ -450,14 +622,26 @@ export default function ReviewScreen() {
         style={{ padding: 16, borderTopWidth: 1, borderColor: colors.border }}
       >
         <Button
-          label={uncertain ? 'Retry same booking' : 'Confirm & Pay →'}
+          label={
+            uncertain
+              ? stage === 'uncertainHold'
+                ? 'Recover same hold'
+                : 'Retry same booking'
+              : stage === 'held'
+                ? 'Continue held booking'
+                : 'Confirm & Pay →'
+          }
           busy={booking.isPending}
           disabled={
-            !uncertain &&
-            (!slot ||
-              !selected.length ||
-              availability !== 'serviceable' ||
-              booking.isSuccess)
+            !recoveryReady ||
+            loadBlocked ||
+            stage === 'restart' ||
+            (!uncertain &&
+              stage !== 'held' &&
+              (!slot ||
+                !selected.length ||
+                availability !== 'serviceable' ||
+                booking.isSuccess))
           }
           onPress={() => confirm()}
         />

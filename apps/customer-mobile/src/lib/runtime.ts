@@ -19,6 +19,7 @@ import {
   blockedPreviewCredential,
 } from '../preview/isolation';
 import { previewNavigation } from '../preview/navigation';
+import { bookingRecovery } from '../session/bookingRecovery';
 
 const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 const modeGlobal = globalThis as typeof globalThis & {
@@ -78,7 +79,10 @@ export const session = new SessionStore(
       body: { refresh_token },
       authenticated: false,
     }),
-  () => {
+  (reason) => {
+    // A temporary startup refresh failure must not erase an unresolved command.
+    if (reason !== 'refreshFailure')
+      void bookingRecovery.clear().catch(() => {});
     void queryClient.cancelQueries();
     queryClient.clear();
     notificationCredential.clear();
@@ -144,6 +148,10 @@ export async function logout() {
         authenticated: false,
       });
   } finally {
-    await session.clear();
+    try {
+      await bookingRecovery.clear();
+    } finally {
+      await session.clear();
+    }
   }
 }

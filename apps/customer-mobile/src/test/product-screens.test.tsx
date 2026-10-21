@@ -18,7 +18,7 @@ import AddressScreen from '../features/addresses/AddressScreen';
 import { DraftProvider, useDraft } from '../features/collection/DraftProvider';
 import { developmentAddresses } from '../features/collection/developmentRepositories';
 import { repositories } from '../lib/repositories';
-import { Body } from '../components/ui';
+import { Body, Button } from '../components/ui';
 import * as Location from 'expo-location';
 let mockRequestId = '11111111-1111-4111-8111-111111111111';
 let mockCompensationEnabled = true;
@@ -103,11 +103,123 @@ afterAll(() =>
   notifyManager.setScheduler((callback) => setTimeout(callback, 0)),
 );
 beforeEach(() => {
+  repositories.source = 'development';
   repositories.reset();
   jest.restoreAllMocks();
   jest.clearAllMocks();
   mockRequestId = '11111111-1111-4111-8111-111111111111';
   mockCompensationEnabled = true;
+});
+function ChangeTestAddress() {
+  const draft = useDraft();
+  return (
+    <Button
+      label="Test change address"
+      onPress={() => draft.selectAddress(developmentAddresses[1]!)}
+    />
+  );
+}
+test('backend Review exposes projected states but blocks submission without approved mass and volume', async () => {
+  repositories.source = 'backend';
+  const hold = jest.spyOn(repositories, 'holdSlot');
+  await show(<ReviewScreen />, true);
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Check pickup availability' }),
+  );
+  const radios = await screen.findAllByRole('radio');
+  expect(radios).toHaveLength(4);
+  expect(radios[2]!.props.accessibilityState.disabled).toBe(true);
+  expect(radios[3]!.props.accessibilityState.disabled).toBe(true);
+  await fireEvent.press(radios[1]!);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
+  expect(
+    screen.getByText(
+      'Booking is temporarily unavailable while Tirodhan confirms the required pickup load details.',
+    ),
+  ).toBeTruthy();
+  expect(hold).not.toHaveBeenCalled();
+  repositories.source = 'development';
+});
+test('refresh and changed address invalidate a previous slot selection', async () => {
+  await show(
+    <>
+      <ReviewScreen />
+      <ChangeTestAddress />
+    </>,
+    true,
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Check pickup availability' }),
+  );
+  await fireEvent.press((await screen.findAllByRole('radio'))[0]!);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(false);
+  await fireEvent.press(screen.getByText('Refresh pickup times'));
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
+  await fireEvent.press((await screen.findAllByRole('radio'))[0]!);
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Test change address' }),
+  );
+  expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
+});
+test('late availability from the previous address cannot replace the current context', async () => {
+  const read = repositories.slots.bind(repositories);
+  let resolve!: (value: Awaited<ReturnType<typeof read>>) => void;
+  let oldData!: Awaited<ReturnType<typeof read>>;
+  const fetchSlots = jest
+    .spyOn(repositories, 'slots')
+    .mockImplementationOnce(async (id) => {
+      oldData = await read(id);
+      return new Promise((done) => {
+        resolve = done;
+      });
+    });
+  await show(
+    <>
+      <ReviewScreen />
+      <ChangeTestAddress />
+    </>,
+    true,
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Check pickup availability' }),
+  );
+  await waitFor(() => expect(fetchSlots).toHaveBeenCalledTimes(1));
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Test change address' }),
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Check pickup availability' }),
+  );
+  await screen.findAllByRole('radio');
+  const currentContext = fetchSlots.mock.calls[1]![0];
+  expect(currentContext).not.toBe(oldData.serviceability_context_id);
+  oldData.slots.forEach((slot) => {
+    slot.status = 'FULL';
+    slot.remaining_bookings = 0;
+  });
+  resolve(oldData);
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  const radios = screen.getAllByRole('radio');
+  expect(radios[0]!.props.accessibilityState.disabled).toBe(false);
+  await fireEvent.press(radios[0]!);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(false);
 });
 afterEach(async () => {
   await waitFor(() => expect(client?.isFetching() ?? 0).toBe(0));

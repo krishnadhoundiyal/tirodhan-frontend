@@ -27,6 +27,15 @@ export const safeErrorCodes = [
   'CURSOR_EXPIRED',
 ] as const;
 export type SafeErrorCode = (typeof safeErrorCodes)[number];
+// Writes may have committed before any of these responses reached the client.
+export function ambiguousCommand(error: unknown) {
+  return (
+    !(error instanceof ApiError) ||
+    ['network', 'timeout', 'protocol', 'cancelled'].includes(error.kind) ||
+    error.status >= 500 ||
+    error.status === 408
+  );
+}
 export function isExpiredCursor(error: unknown) {
   return (
     error instanceof ApiError &&

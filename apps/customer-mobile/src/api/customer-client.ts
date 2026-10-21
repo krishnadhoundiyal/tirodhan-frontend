@@ -18,8 +18,8 @@ import type {
   PushRegistrationResult,
   RecommendationDto,
   RefundRead,
-  SlotsDto,
 } from './customer-contracts';
+import { parseAvailability, type ContextSlots } from './slot-contracts';
 
 export function createCustomerApi(
   transport: Transport,
@@ -52,12 +52,16 @@ export function createCustomerApi(
         '/v1/customer/collection-catalogue',
         signal,
       ),
-    slots: (id: string, signal?: AbortSignal) =>
-      read<SlotsDto>(
-        'slots',
-        `/v1/customer/pickup-slots?serviceability_context_id=${encodeURIComponent(id)}`,
-        signal,
+    slots: async (id: string, signal?: AbortSignal): Promise<ContextSlots> => ({
+      ...parseAvailability(
+        await read<unknown>(
+          'slots',
+          `/v2/customer/slot-availability?serviceability_context_id=${encodeURIComponent(id)}`,
+          signal,
+        ),
       ),
+      serviceability_context_id: id,
+    }),
     collections: (
       view: 'active' | 'history',
       next: string | null = null,

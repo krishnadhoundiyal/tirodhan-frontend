@@ -12,8 +12,8 @@ import type {
   FavouriteCategories,
   PaymentRead,
   RefundStatus,
-  SlotsDto,
 } from '../../api/customer-contracts';
+import type { ContextSlots } from '../../api/slot-contracts';
 import { ApiError } from '../../api/errors';
 import type { CustomerRepositories } from './repository';
 import { developmentCatalogue } from './developmentCatalogue';
@@ -404,34 +404,46 @@ export function createDevelopmentRepositories(): CustomerRepositories {
     async refunds(id) {
       return { refunds: detail(id).refunds };
     },
-    async slots(id): Promise<SlotsDto> {
+    holdSlot() {
+      throw new ApiError(0, 'preview');
+    },
+    async readHold() {
+      throw new ApiError(0, 'preview');
+    },
+    async slots(id): Promise<ContextSlots> {
       const context = contexts.get(id);
       if (!context || Date.parse(context.expires_at) <= Date.now())
         throw new ApiError(409, 'http', 'SERVICEABILITY_EXPIRED');
-      const label = (start: string, end: string) =>
-        `${new Date(start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · ${new Date(start).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}–${new Date(end).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
-      const morningStart = future(24),
-        morningEnd = future(24.5),
-        fullStart = future(25),
-        fullEnd = future(25.5);
+      const start = Math.ceil((Date.now() + 86400000) / 1800000) * 1800000;
+      const fixture = (
+        offset: number,
+        status: 'AVAILABLE' | 'LIMITED' | 'FULL' | 'UNKNOWN',
+      ) => ({
+        slot_start: new Date(start + offset * 1800000).toISOString(),
+        slot_end: new Date(start + (offset + 1) * 1800000).toISOString(),
+        status,
+        remaining_bookings:
+          status === 'AVAILABLE' ? 3 : status === 'LIMITED' ? 1 : 0,
+        generation: 1,
+        policy_version: 1,
+        source_version: 1,
+        computed_at: new Date().toISOString(),
+        valid_until: context.expires_at,
+        admission_basis: 'PROJECTED_ALLOWANCE' as const,
+        capacity_certified: false as const,
+      });
       return {
         serviceability_context_id: id,
-        expires_at: context.expires_at,
+        region_id: '55555555-5555-4555-8555-555555555555',
+        capacity_certified: false,
+        allowance_is_estimate: true,
+        standard_pickup_seconds: 300,
+        standard_discharge_seconds: 300,
         slots: [
-          {
-            slot_id: 'preview-morning',
-            start: morningStart,
-            end: morningEnd,
-            label: label(morningStart, morningEnd),
-            availability: 'AVAILABLE',
-          },
-          {
-            slot_id: 'preview-full',
-            start: fullStart,
-            end: fullEnd,
-            label: label(fullStart, fullEnd),
-            availability: 'FULL',
-          },
+          fixture(0, 'AVAILABLE'),
+          fixture(1, 'LIMITED'),
+          fixture(2, 'FULL'),
+          fixture(3, 'UNKNOWN'),
         ],
       };
     },

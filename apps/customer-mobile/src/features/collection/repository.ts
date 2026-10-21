@@ -21,8 +21,8 @@ import type {
   CheckoutParameters,
   RecommendationDto,
   RefundRead,
-  SlotsDto,
 } from '../../api/customer-contracts';
+import type { ContextSlots } from '../../api/slot-contracts';
 import { catalogueFromDto, type Catalogue } from './catalogue';
 import type { CustomerCapability } from '../../api/capabilities';
 import type { createApi } from '../../api/client';
@@ -41,7 +41,9 @@ export interface CustomerRepositories {
   checkout(id: string, signal?: AbortSignal): Promise<CheckoutParameters>;
   paymentAttempt: ReturnType<typeof createApi>['paymentAttempt'];
   refunds(id: string, signal?: AbortSignal): Promise<{ refunds: RefundRead[] }>;
-  slots(id: string, signal?: AbortSignal): Promise<SlotsDto>;
+  slots(id: string, signal?: AbortSignal): Promise<ContextSlots>;
+  holdSlot: ReturnType<typeof createApi>['holdSlot'];
+  readHold: ReturnType<typeof createApi>['readHold'];
   addresses(signal?: AbortSignal): Promise<Address[]>;
   createAddress: ReturnType<typeof createApi>['createAddress'];
   updateAddress: ReturnType<typeof createApi>['updateAddress'];
@@ -92,6 +94,14 @@ export function createHttpRepositories(
     },
     refunds: customer.refunds,
     slots: customer.slots,
+    holdSlot: (body) => {
+      requireCapability('slots');
+      return existing.holdSlot(body);
+    },
+    readHold: (id, signal) => {
+      requireCapability('slots');
+      return existing.readHold(id, signal);
+    },
     addresses: existing.addresses,
     createAddress: existing.createAddress,
     updateAddress: existing.updateAddress,
