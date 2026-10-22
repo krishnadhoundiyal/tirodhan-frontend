@@ -22,7 +22,7 @@ import {
   styles,
 } from '../../components/ui';
 import { useDraft } from './DraftProvider';
-import { useCatalogue, useCustomerOwner } from './queries';
+import { useCatalogue, useCustomerOwner, useWeightPolicy } from './queries';
 import { repositories } from '../../lib/repositories';
 import type { PreparedCommand } from '../../api/transport';
 import type {
@@ -31,7 +31,13 @@ import type {
 } from '../../api/contracts';
 import { ApiError, userMessage, ambiguousCommand } from '../../api/errors';
 import { slotSelectable, slotLabel } from '../../api/slot-contracts';
-import { PhysicalLoadRequired, RecoveryRequired } from './bookingFlow';
+import {
+  BoundBooking,
+  PhysicalLoadRequired,
+  RecoveryRequired,
+} from './bookingFlow';
+import { declarationItem } from './declarations';
+import { moneyLabel } from './financial';
 import { colors } from '../../theme/tokens';
 import MediaImage from '../media/MediaImage';
 import ItemSelector from './ItemSelector';
@@ -45,7 +51,10 @@ export default function ReviewScreen() {
     owner = useCustomerOwner(),
     queryClient = useQueryClient();
   const flow = draft.bookingFlow;
+  const policy = useWeightPolicy();
+  const [reviewedQuote, setReviewedQuote] = useState<string | null>(null);
   const stage = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
+  const preparedSummary = stage !== 'idle' ? flow.getPreparedSummary() : null;
   const [recoveryReady, setRecoveryReady] = useState(false);
   const [recoveryError, setRecoveryError] = useState<unknown>(null);
   useEffect(() => {
@@ -87,6 +96,52 @@ export default function ReviewScreen() {
       ) ?? [],
     [catalogue.data, draft.categoryCodes],
   );
+  const quoteInput = useMemo(() => {
+    if (!policy.data || !selected.length) return null;
+    const items = selected.map((item) =>
+      declarationItem(item, draft.declarations[item.code], policy.data!),
+    );
+    return items.every((item) => item !== null)
+      ? {
+          policy_id: policy.data.policy_id,
+          policy_revision: policy.data.policy_revision,
+          items,
+        }
+      : null;
+  }, [policy.data, selected, draft.declarations]);
+  const quote = useQuery({
+    queryKey: ['collection-quote', owner, quoteInput],
+    queryFn: async ({ signal }) => {
+      const result = await repositories.quote(quoteInput!, signal);
+      if (
+        result.minimum_amount_minor !== policy.data?.minimum_amount_minor ||
+        result.maximum_amount_minor !== policy.data?.maximum_amount_minor
+      )
+        throw new ApiError(200, 'protocol');
+      return result;
+    },
+    enabled:
+      !!quoteInput && stage === 'idle' && !policy.isError && !policy.isFetching,
+    retry: false,
+    staleTime: 0,
+  });
+  const quoteReady =
+    !!quoteInput &&
+    !policy.isError &&
+    !policy.isFetching &&
+    !quote.isError &&
+    !quote.isFetching &&
+    !!quote.data &&
+    quote.data.confirmation.policy_id === policy.data?.policy_id &&
+    quote.data.confirmation.policy_revision === policy.data?.policy_revision;
+  const quoteReviewed =
+    quoteReady && reviewedQuote === quote.data?.confirmation.quote_fingerprint;
+  useEffect(() => {
+    if (quote.error instanceof ApiError && quote.error.status === 409)
+      void queryClient.invalidateQueries({
+        queryKey: ['weight-policy', owner],
+      });
+  }, [quote.error, owner, queryClient]);
   const preparedCheck = useRef<{
     identity: string;
     expiresAt?: number;
@@ -192,6 +247,8 @@ export default function ReviewScreen() {
           !currentContext ||
           !slots.data ||
           !selected.length ||
+          !quoteReviewed ||
+          !quote.data ||
           serviceabilityState(currentContext, draft.address, Date.now()) !==
             'serviceable'
         )
@@ -200,19 +257,8 @@ export default function ReviewScreen() {
           context: currentContext,
           availability: slots.data,
           slot,
-          items: selected.map((item) => ({
-            item_category_code: item.code,
-            declared_quantity:
-              item.input.quantity === 'OPTIONAL'
-                ? (draft.declarations[item.code]?.quantity ?? null)
-                : null,
-            declared_weight_grams:
-              item.input.weight_grams === 'OPTIONAL'
-                ? (draft.declarations[item.code]?.weightGrams ?? null)
-                : null,
-          })),
-          // No approved mass/volume mapping exists. Do not infer it from optional declarations.
-          load: null,
+          items: quote.data.items,
+          quote: quote.data,
         });
       }
       // Existing SCREEN_PREVIEW fixture booking remains local and never acquires real capacity.
@@ -223,6 +269,8 @@ export default function ReviewScreen() {
             'serviceable' ||
           !slotSelectable(slot, Date.now()) ||
           !selected.length ||
+          !quoteReviewed ||
+          !quote.data?.live_customer_holds_available ||
           !currentContext
         )
           throw new ApiError(409, 'http', 'SLOT_UNAVAILABLE');
@@ -231,17 +279,8 @@ export default function ReviewScreen() {
           serviceability_context_id: currentContext.serviceability_context_id,
           slot_start: slot.slot_start,
           slot_end: slot.slot_end,
-          items: selected.map((item) => ({
-            item_category_code: item.code,
-            declared_quantity:
-              item.input.quantity === 'OPTIONAL'
-                ? (draft.declarations[item.code]?.quantity ?? null)
-                : null,
-            declared_weight_grams:
-              item.input.weight_grams === 'OPTIONAL'
-                ? (draft.declarations[item.code]?.weightGrams ?? null)
-                : null,
-          })),
+          items: quote.data.items,
+          confirmed_quote: quote.data.confirmation,
         });
       }
       return bookingCommand.current.execute();
@@ -255,6 +294,13 @@ export default function ReviewScreen() {
       });
     },
     onError: (error) => {
+      if (error instanceof BoundBooking && flow.ownsSession()) {
+        router.push({
+          pathname: '/collections/[requestId]',
+          params: { requestId: error.requestId },
+        });
+        return;
+      }
       if (
         error instanceof ApiError &&
         error.kind === 'http' &&
@@ -263,6 +309,15 @@ export default function ReviewScreen() {
         bookingCommand.current = null;
         if (error.status === 409) {
           setChosen(null);
+          if (flow.getSnapshot() === 'idle') {
+            setReviewedQuote(null);
+            void queryClient.invalidateQueries({
+              queryKey: ['weight-policy', owner],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ['collection-quote', owner],
+            });
+          }
           void queryClient.invalidateQueries({
             queryKey: ['serviceability', owner],
           });
@@ -274,14 +329,20 @@ export default function ReviewScreen() {
   const uncertain =
     stage === 'uncertainHold' ||
     stage === 'uncertainBooking' ||
-    (booking.isError && ambiguousCommand(booking.error));
+    (booking.isError &&
+      !(booking.error instanceof PhysicalLoadRequired) &&
+      !(booking.error instanceof RecoveryRequired) &&
+      !(booking.error instanceof BoundBooking) &&
+      ambiguousCommand(booking.error));
   const locked =
     booking.isPending ||
     uncertain ||
     booking.isSuccess ||
     stage !== 'idle' ||
     !recoveryReady;
-  const loadBlocked = repositories.source === 'backend' && stage === 'idle';
+  const loadBlocked =
+    stage === 'idle' &&
+    (!quoteReviewed || !quote.data?.live_customer_holds_available);
   // Retain the exact prepared intent after ambiguity; edits cannot silently create a second booking.
   const confirm = (confirmed = false) => {
     const warning = needsAddressConfirmation(
@@ -345,6 +406,12 @@ export default function ReviewScreen() {
                       : ''}
                     {draft.declarations[item.code]?.weightGrams
                       ? ` · ${draft.declarations[item.code]?.weightGrams} grams`
+                      : ''}
+                    {draft.declarations[item.code]?.weightBand
+                      ? ` · ${draft.declarations[item.code]?.weightBand === 'ABOVE_T' ? `${draft.declarations[item.code]?.weightKg ?? ''} kg` : draft.declarations[item.code]?.weightBand === 'BELOW_B' ? (policy.data?.first_band_label ?? '') : (policy.data?.middle_band_label ?? '')}`
+                      : ''}
+                    {draft.declarations[item.code]?.volumeLitres
+                      ? ` · ${draft.declarations[item.code]?.volumeLitres} L for whole quantity`
                       : ''}
                   </Body>
                 </View>
@@ -501,12 +568,6 @@ export default function ReviewScreen() {
               }}
             />
           )}
-          {loadBlocked && (
-            <Body accessibilityRole="alert">
-              Booking is temporarily unavailable while Tirodhan confirms the
-              required pickup load details.
-            </Body>
-          )}
           {flow.getHold() && (
             <Body>
               Hold booking cutoff:{' '}
@@ -519,7 +580,7 @@ export default function ReviewScreen() {
           {(stage === 'restart' || !!recoveryError) && (
             <StatusCard
               title="Previous booking needs checking"
-              detail="Recovery information was retained. Check Bookings before starting another booking; the original submission may have completed."
+              detail="Your original command is saved. Retry recovery to check its binding and continue the same booking without creating another identity."
               error={
                 recoveryError instanceof RecoveryRequired
                   ? undefined
@@ -593,11 +654,90 @@ export default function ReviewScreen() {
         </Card>
         <Card>
           <Heading style={{ fontSize: 25 }}>Collection summary</Heading>
-          <Body>
-            Tirodhan confirms the collection charge after your pickup details
-            are submitted. Payment remains pending until confirmed by the
-            server.
-          </Body>
+          {policy.isError && (
+            <StatusCard
+              title="Weight pricing unavailable"
+              error={policy.error}
+              retry={() => void policy.refetch()}
+            />
+          )}
+          {!quoteInput && (
+            <Body>
+              Choose a current weight band for each selected item. Enter the
+              whole quantity’s occupied volume in litres before booking.
+            </Body>
+          )}
+          {quote.isFetching && <Body>Updating pickup price…</Body>}
+          {quote.isError && (
+            <StatusCard
+              title="Pickup price unavailable"
+              error={quote.error}
+              retry={() => {
+                void policy.refetch();
+                void quote.refetch();
+              }}
+            />
+          )}
+          {preparedSummary && (
+            <View style={{ gap: 8 }}>
+              <Body>
+                Original declared weight: {preparedSummary.weight / 1000} kg
+              </Body>
+              <Body>
+                Original declared volume: {preparedSummary.volume / 1000} L
+              </Body>
+              <Heading style={{ fontSize: 25 }}>
+                Confirmed pickup price:{' '}
+                {moneyLabel(preparedSummary.amount, 'INR')}
+              </Heading>
+              <Body>Recovery keeps the same confirmed items and price.</Body>
+            </View>
+          )}
+          {!preparedSummary && quoteReady && quote.data && (
+            <View style={{ gap: 8 }}>
+              <Body>
+                Total declared weight: {quote.data.total_weight_grams / 1000} kg
+              </Body>
+              <Body>
+                Total declared volume:{' '}
+                {quote.data.total_volume_ml === null
+                  ? 'Enter all item volumes'
+                  : `${quote.data.total_volume_ml / 1000} L`}
+              </Body>
+              <Heading style={{ fontSize: 25 }}>
+                Pickup price:{' '}
+                {moneyLabel(quote.data.total_amount_minor, quote.data.currency)}
+              </Heading>
+              {!quote.data.live_customer_holds_available && (
+                <Body accessibilityRole="alert">
+                  Enter the occupied volume for every selected item before
+                  booking.
+                </Body>
+              )}
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel="I have reviewed this pickup price"
+                accessibilityState={{
+                  checked: quoteReviewed,
+                  disabled: locked,
+                }}
+                disabled={locked}
+                style={{ minHeight: 48, padding: 10 }}
+                onPress={() =>
+                  setReviewedQuote(
+                    quoteReviewed
+                      ? null
+                      : quote.data!.confirmation.quote_fingerprint,
+                  )
+                }
+              >
+                <Body>
+                  {quoteReviewed ? '✓ ' : '□ '}I have reviewed this pickup price
+                </Body>
+              </Pressable>
+            </View>
+          )}
+          <Body>Payment remains pending until confirmed by Tirodhan.</Body>
         </Card>
         <Card>
           <Heading style={{ fontSize: 25 }}>Important note</Heading>
@@ -611,7 +751,7 @@ export default function ReviewScreen() {
             {uncertain
               ? 'We couldn’t confirm the booking result. Retry this same booking before making changes, or check Bookings.'
               : booking.error instanceof PhysicalLoadRequired
-                ? 'Booking is waiting for approved pickup load details.'
+                ? 'Review the current pickup price and complete all item volumes before booking.'
                 : booking.error instanceof RecoveryRequired
                   ? 'Check the previous booking in Bookings before starting another.'
                   : userMessage(booking.error)}

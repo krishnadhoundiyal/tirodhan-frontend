@@ -1,5 +1,10 @@
 # Customer Mobile backend contracts
 
+> Current: [WEIGHT_VOLUME_BOOKING_REPORT.md](WEIGHT_VOLUME_BOOKING_REPORT.md), verified
+> against backend `b281e03a` on 22 October 2026. It supersedes historical weight,
+> volume, pricing and restart-recovery assumptions below with the implemented
+> policy/quote/items/confirmed_quote/bound_request_id contracts.
+
 > 21 October 2026: [PROJECTED_BOOKING_REPORT.md](PROJECTED_BOOKING_REPORT.md)
 > supersedes the historical V1 slot and booking-preparation sections below with
 > verified V2 projected availability/atomic holds at backend `c1e2e7c`. Physical

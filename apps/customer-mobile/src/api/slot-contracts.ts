@@ -31,6 +31,8 @@ export interface PhysicalLoad {
   volume_ml: number;
 }
 export interface HoldSlot extends PhysicalLoad {
+  items?: import('./contracts').CollectionItemInput[];
+  confirmed_quote?: import('./weight-contracts').QuoteConfirmation | null;
   client_command_id: string;
   context_id: string;
   reattempt_request_id?: string | null;
@@ -41,6 +43,7 @@ export interface HoldSlot extends PhysicalLoad {
   discharge_seconds: number;
 }
 export interface SlotHold {
+  bound_request_id: string | null;
   reservation_id: string;
   admission_basis: 'PROJECTED_ALLOWANCE' | 'EXACT_CERTIFICATE';
   bookable: boolean;
@@ -105,6 +108,8 @@ export function parseHold(value: unknown, expectedId: string): SlotHold {
       String(value.admission_basis),
     ) ||
     typeof value.bookable !== 'boolean' ||
+    !(value.bound_request_id === null || uuid(value.bound_request_id)) ||
+    (value.bound_request_id !== null && value.bookable) ||
     !timestamp(value.expires_at) ||
     !timestamp(value.book_by) ||
     Date.parse(value.book_by) >= Date.parse(value.expires_at)

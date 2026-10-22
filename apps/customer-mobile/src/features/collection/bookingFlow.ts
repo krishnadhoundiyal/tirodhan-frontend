@@ -10,12 +10,12 @@ import {
   slotSelectable,
   uuid,
   type ContextSlots,
-  type PhysicalLoad,
   type ProjectedSlot,
   type SlotHold,
 } from '../../api/slot-contracts';
 import type { CustomerRepositories } from './repository';
 import type { BookingRecovery, BookingRecoveryStore } from './bookingRecovery';
+import { parseQuote, type WeightQuote } from '../../api/weight-contracts';
 
 export type BookingStage =
   | 'idle'
@@ -31,13 +31,18 @@ export interface BookingIntent {
   availability: ContextSlots;
   slot: ProjectedSlot;
   items: CollectionCreate['items'];
-  load: PhysicalLoad | null;
+  quote: WeightQuote | null;
 }
 export class PhysicalLoadRequired extends Error {
   constructor() {
     super(
-      'An approved physical mass and volume source is required before booking.',
+      'A reviewed server quote with complete weight and volume is required before booking.',
     );
+  }
+}
+export class BoundBooking extends Error {
+  constructor(public readonly requestId: string) {
+    super('This hold is already bound to a booking.');
   }
 }
 export class RecoveryRequired extends Error {
@@ -54,6 +59,8 @@ export class BookingFlow {
   private record: BookingRecovery | null = null;
   private flight: Promise<CollectionResponse> | null = null;
   private initialized = false;
+  private initialization: Promise<void> | null = null;
+  private recoveryFlight: Promise<string | null> | null = null;
   private preparedBinding: string | null = null;
   private addressBinding: string | null = null;
   private listeners = new Set<() => void>();
@@ -79,6 +86,17 @@ export class BookingFlow {
   };
   getSnapshot = () => this.stage;
   getHold = () => this.hold;
+  getPreparedSummary = () =>
+    this.record?.holdBody && this.record.quotedAmountMinor !== undefined
+      ? {
+          weight: this.record.holdBody.mass_g,
+          volume: this.record.holdBody.volume_ml,
+          amount: this.record.quotedAmountMinor,
+        }
+      : null;
+  startNext() {
+    if (this.stage === 'complete') this.reset();
+  }
   setAddressBinding(identity: string | null) {
     this.addressBinding = identity;
   }
@@ -90,27 +108,94 @@ export class BookingFlow {
   private assertOwner() {
     if (this.currentOwner() !== this.sessionOwner) throw new ApiError(401);
   }
-  async initialize() {
+  initialize(): Promise<void> {
     this.assertOwner();
-    if (this.initialized) return;
-    const record = await this.recovery.read(this.owner);
-    this.assertOwner();
-    this.record = record;
-    this.initialized = true;
-    if (record) this.set('restart');
+    if (this.initialized) return Promise.resolve();
+    if (this.initialization) return this.initialization;
+    const flight = (async () => {
+      const record = await this.recovery.read(this.owner);
+      this.assertOwner();
+      this.record = record;
+      this.initialized = true;
+      if (record) this.set('restart');
+    })();
+    this.initialization = flight;
+    void flight
+      .finally(() => {
+        this.initialization = null;
+      })
+      .catch(() => {});
+    return flight;
   }
-  async recoverRestart(): Promise<string | null> {
+  recoverRestart(): Promise<string | null> {
+    this.assertOwner();
+    if (this.recoveryFlight) return this.recoveryFlight;
+    const flight = this.reconcile();
+    this.recoveryFlight = flight;
+    void flight
+      .finally(() => {
+        this.recoveryFlight = null;
+      })
+      .catch(() => {});
+    return flight;
+  }
+  private async reconcile(): Promise<string | null> {
     await this.initialize();
     this.assertOwner();
     if (this.stage !== 'restart' || !this.record) return null;
-    if (this.record.requestId) return this.record.requestId;
+    if (this.record.requestId) {
+      this.set('complete');
+      return this.record.requestId;
+    }
     // The backend reservation ID is exactly client_command_id, including after response loss.
-    const hold = await this.repo.readHold(
-      this.record.reservationId ?? this.record.holdCommandId,
-    );
+    let hold: SlotHold;
+    try {
+      hold = await this.repo.readHold(
+        this.record.reservationId ?? this.record.holdCommandId,
+      );
+    } catch (error) {
+      this.assertOwner();
+      if (
+        !(error instanceof ApiError) ||
+        error.status !== 404 ||
+        !this.record.holdBody
+      )
+        throw error;
+      // A 404 can precede the first transaction's commit. Replay exactly, never a new ID.
+      hold = await this.repo.holdSlot(this.record.holdBody).execute();
+    }
     this.assertOwner();
     this.hold = hold;
-    if (this.record.bookingCommandId) throw new RecoveryRequired();
+    if (hold.bound_request_id)
+      return this.rememberBinding(hold.bound_request_id);
+    if (this.record.holdBody && this.record.bookingBody) {
+      this.bookingBody = this.record.bookingBody;
+      this.holdCommand = this.repo.holdSlot(this.record.holdBody);
+      // A resumed session is for the same owner; saved API bodies retain the original context.
+      this.preparedBinding = this.addressBinding;
+      if (this.record.bookingSubmitted) {
+        this.bookingCommand = this.repo.createCollection(this.bookingBody);
+        this.set('uncertainBooking');
+        try {
+          return (await this.executeBooking()).request_id;
+        } catch (error) {
+          this.assertOwner();
+          this.set('restart');
+          throw error;
+        }
+      }
+      if (holdBookable(hold, this.now())) {
+        this.set('held');
+        try {
+          return (await this.run()).request_id;
+        } catch (error) {
+          if (error instanceof BoundBooking) return error.requestId;
+          this.assertOwner();
+          if (this.getSnapshot() !== 'idle') this.set('restart');
+          throw error;
+        }
+      }
+    } else if (this.record.bookingCommandId) throw new RecoveryRequired();
     // With no booking ever submitted, a passed cutoff resolves the old hold.
     if (
       !holdBookable(hold, this.now()) &&
@@ -123,8 +208,17 @@ export class BookingFlow {
     }
     throw new RecoveryRequired();
   }
+  private async rememberBinding(requestId: string) {
+    this.assertOwner();
+    this.record = { ...this.record!, requestId };
+    await this.recovery.write(this.record);
+    this.assertOwner();
+    this.set('complete');
+    return requestId;
+  }
   submit(intent?: BookingIntent): Promise<CollectionResponse> {
     this.assertOwner();
+    if (this.recoveryFlight) return Promise.reject(new RecoveryRequired());
     if (this.flight) return this.flight;
     const flight = this.run(intent);
     this.flight = flight;
@@ -142,8 +236,18 @@ export class BookingFlow {
       throw new RecoveryRequired();
     if (!this.holdCommand) {
       if (!intent) throw new RecoveryRequired();
-      if (!intent.load) throw new PhysicalLoadRequired();
+      if (!intent.quote) throw new PhysicalLoadRequired();
       const { context, availability, slot, items } = intent;
+      const quote = JSON.parse(
+        JSON.stringify(
+          parseQuote(intent.quote, { ...intent.quote.confirmation, items }),
+        ),
+      ) as WeightQuote;
+      if (
+        !quote.live_customer_holds_available ||
+        quote.total_volume_ml === null
+      )
+        throw new PhysicalLoadRequired();
       if (
         context.status !== 'SERVICEABLE' ||
         Date.parse(context.expires_at) <= this.now() ||
@@ -156,7 +260,7 @@ export class BookingFlow {
         throw new ApiError(409, 'http', 'SLOT_UNAVAILABLE');
       const holdId = this.newId();
       this.preparedBinding = this.addressBinding;
-      this.holdCommand = this.repo.holdSlot({
+      const holdBody = {
         client_command_id: holdId,
         context_id: context.serviceability_context_id,
         expected_generation: slot.generation,
@@ -164,10 +268,12 @@ export class BookingFlow {
         slot_end: slot.slot_end,
         pickup_seconds: availability.standard_pickup_seconds,
         discharge_seconds: availability.standard_discharge_seconds,
-        mass_g: intent.load.mass_g,
-        volume_ml: intent.load.volume_ml,
-      });
-      this.record = { owner: this.owner, holdCommandId: holdId };
+        mass_g: quote.total_weight_grams,
+        volume_ml: quote.total_volume_ml,
+        items: quote.items,
+        confirmed_quote: quote.confirmation,
+      };
+      this.holdCommand = this.repo.holdSlot(holdBody);
       // Freeze the eventual booking fields now, before the hold can become ambiguous.
       this.bookingBody = JSON.parse(
         JSON.stringify({
@@ -176,10 +282,26 @@ export class BookingFlow {
           capacity_reservation_id: holdId,
           slot_start: slot.slot_start,
           slot_end: slot.slot_end,
-          items,
+          items: quote.items,
+          confirmed_quote: quote.confirmation,
         }),
       ) as CollectionCreate;
+      this.record = JSON.parse(
+        JSON.stringify({
+          owner: this.owner,
+          holdCommandId: holdId,
+          bookingCommandId: this.bookingBody.client_request_id,
+          holdBody,
+          bookingBody: this.bookingBody,
+          bookingSubmitted: false,
+          quotedAmountMinor: quote.total_amount_minor,
+        }),
+      ) as BookingRecovery;
     }
+    if (this.hold?.bound_request_id)
+      throw new BoundBooking(
+        await this.rememberBinding(this.hold.bound_request_id),
+      );
     if (!this.record || !this.bookingBody) throw new RecoveryRequired();
     // Once booking was sent, replay it even after the old hold expires or becomes bound.
     if (this.bookingCommand) return this.executeBooking();
@@ -215,9 +337,17 @@ export class BookingFlow {
       throw error;
     }
     // Re-read binding permission just before a NEW booking. No projection refresh can revoke a hold.
+    if (this.hold?.bound_request_id)
+      throw new BoundBooking(
+        await this.rememberBinding(this.hold.bound_request_id),
+      );
     this.assertBinding();
     this.hold = await this.repo.readHold(this.hold!.reservation_id);
     this.assertOwner();
+    if (this.hold.bound_request_id)
+      throw new BoundBooking(
+        await this.rememberBinding(this.hold.bound_request_id),
+      );
     this.assertBinding();
     if (!holdBookable(this.hold, this.now())) {
       await this.recovery.clear();
@@ -228,6 +358,7 @@ export class BookingFlow {
     this.record = {
       ...this.record,
       bookingCommandId: this.bookingBody.client_request_id,
+      bookingSubmitted: true,
     };
     await this.recovery.write(this.record);
     this.assertOwner();
@@ -268,6 +399,7 @@ export class BookingFlow {
         !Number.isFinite(Date.parse(result.payment_expires_at)) ||
         !Number.isSafeInteger(result.quoted_amount_minor) ||
         result.quoted_amount_minor < 0 ||
+        result.quoted_amount_minor !== this.record?.quotedAmountMinor ||
         result.currency !== 'INR' ||
         !Array.isArray(result.items) ||
         result.items.length !== this.bookingBody.items.length ||
@@ -281,6 +413,12 @@ export class BookingFlow {
               (this.bookingBody!.items[index]!.declared_quantity ?? null) ||
             item.declared_weight_grams !==
               (this.bookingBody!.items[index]!.declared_weight_grams ?? null) ||
+            (item.weight_band ?? null) !==
+              (this.bookingBody!.items[index]!.weight_band ?? null) ||
+            (item.weight_kg ?? null) !==
+              (this.bookingBody!.items[index]!.weight_kg ?? null) ||
+            (item.declared_volume_ml ?? null) !==
+              (this.bookingBody!.items[index]!.declared_volume_ml ?? null) ||
             !Number.isSafeInteger(item.quoted_line_amount_minor) ||
             item.quoted_line_amount_minor < 0 ||
             item.currency !== result.currency ||

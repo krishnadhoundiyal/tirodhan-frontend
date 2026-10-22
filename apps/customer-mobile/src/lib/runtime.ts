@@ -80,8 +80,9 @@ export const session = new SessionStore(
       authenticated: false,
     }),
   (reason) => {
-    // A temporary startup refresh failure must not erase an unresolved command.
-    if (reason !== 'refreshFailure')
+    // Involuntary authentication loss retains owner-scoped commands for re-login.
+    // Explicit logout clears them below, after invalidating the session owner.
+    if (reason === 'accountChange')
       void bookingRecovery.clear().catch(() => {});
     void queryClient.cancelQueries();
     queryClient.clear();
@@ -149,9 +150,9 @@ export async function logout() {
       });
   } finally {
     try {
-      await bookingRecovery.clear();
-    } finally {
       await session.clear();
+    } finally {
+      await bookingRecovery.clear();
     }
   }
 }

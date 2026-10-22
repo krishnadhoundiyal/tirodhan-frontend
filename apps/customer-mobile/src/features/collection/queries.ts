@@ -11,6 +11,7 @@ import {
 } from '../../lib/navigation';
 import { catalogueFreshness } from './catalogue';
 import { isExpiredCursor } from '../../api/errors';
+import { bookingRecovery } from '../../session/bookingRecovery';
 export function useCustomerOwner() {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return navigationOwner(state);
@@ -24,6 +25,16 @@ export function useCatalogue() {
       const remaining = catalogueFreshness(query.state.data);
       return remaining > 0 && remaining < 300000 ? remaining : false;
     },
+  });
+}
+export function useWeightPolicy(enabled = true) {
+  const owner = useCustomerOwner();
+  return useQuery({
+    queryKey: ['weight-policy', owner],
+    queryFn: ({ signal }) => repositories.weightPolicy(signal),
+    enabled,
+    retry: false,
+    staleTime: 30000,
   });
 }
 export function useRecommendations() {
@@ -54,9 +65,14 @@ export function useCollections(view: 'active' | 'history') {
 }
 export function useCollectionDetail(id: string) {
   const owner = useCustomerOwner();
-  return useQuery({
+  const query = useQuery({
     queryKey: ['collection', owner, id],
     queryFn: ({ signal }) => repositories.detail(id, signal),
     enabled: !!id,
   });
+  useEffect(() => {
+    if (repositories.source === 'backend' && query.data?.request_id === id)
+      void bookingRecovery.resolve(owner, id).catch(() => {});
+  }, [owner, id, query.data]);
+  return query;
 }

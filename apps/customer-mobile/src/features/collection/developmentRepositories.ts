@@ -14,6 +14,10 @@ import type {
   RefundStatus,
 } from '../../api/customer-contracts';
 import type { ContextSlots } from '../../api/slot-contracts';
+import {
+  developmentWeightPolicy,
+  developmentQuote,
+} from './developmentWeightPricing';
 import { ApiError } from '../../api/errors';
 import type { CustomerRepositories } from './repository';
 import { developmentCatalogue } from './developmentCatalogue';
@@ -320,6 +324,12 @@ export function createDevelopmentRepositories(): CustomerRepositories {
   });
   return {
     source: 'development',
+    async weightPolicy() {
+      return copy(developmentWeightPolicy);
+    },
+    async quote(input) {
+      return developmentQuote(input);
+    },
     async catalogue() {
       return developmentCatalogue;
     },
@@ -547,6 +557,9 @@ export function createDevelopmentRepositories(): CustomerRepositories {
             )?.name ?? item.item_category_code,
           declared_quantity: item.declared_quantity ?? null,
           declared_weight_grams: item.declared_weight_grams ?? null,
+          weight_band: item.weight_band,
+          weight_kg: item.weight_kg,
+          declared_volume_ml: item.declared_volume_ml,
           quoted_line_amount_minor: index === 0 ? 35000 : 0,
           image: null,
         }));

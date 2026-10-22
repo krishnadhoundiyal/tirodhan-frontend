@@ -1,14 +1,19 @@
 # Tirodhan Customer Mobile
 
-Projected booking update (21 October 2026): Review now reads V2 projected slots;
-atomic hold, reservation binding and exact replay components use the current
-backend contract. **Live hold/booking remains disabled pending approval of physical
-mass and volume inputs.** No values are inferred from optional declared weights.
-See [PROJECTED_BOOKING_REPORT.md](docs/PROJECTED_BOOKING_REPORT.md) for verified
-contracts, restart recovery limitations, validation evidence and changed files.
-The `slots` deployment capability now covers V2 projections and holds; enable it
-only after checking the actual nonprod deployment. SCREEN_PREVIEW remains local,
-and native Razorpay checkout is still a separate increment.
+Current booking integration (22 October 2026): the existing item editor now collects
+server-configured weight bands and whole-quantity occupied volume in litres.
+Review displays the server quote and requires price review, then acquires a V2
+hold and creates a reservation-bound unpaid booking. Native private storage retains
+exact commands for restart replay and `bound_request_id` recovery. See
+[WEIGHT_VOLUME_BOOKING_REPORT.md](docs/WEIGHT_VOLUME_BOOKING_REPORT.md) for current
+contracts, validation and deployment/device limitations. The earlier physical
+load blocker is resolved by these approved declarations. Add `weightPricing`
+to a verified deployment capability manifest only after the actual policy/quote APIs
+are deployed; no flag is enabled here. SCREEN_PREVIEW stays local. Razorpay checkout
+remains outside this increment.
+
+The [CM-P0-01 report](docs/PROJECTED_BOOKING_REPORT.md) is retained as history of
+the projected-slot base; its former input and binding gaps are superseded above.
 
 Expo SDK57, React Native0.86, React19.2, strict TypeScript, Expo Router, Hermes and New Architecture. This app extends the existing frontend workspace; it does not scaffold other apps or shared packages.
 

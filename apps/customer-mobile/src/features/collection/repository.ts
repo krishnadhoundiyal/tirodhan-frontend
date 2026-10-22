@@ -30,6 +30,8 @@ import { ApiError } from '../../api/errors';
 export interface CustomerRepositories {
   source: 'backend' | 'development';
   catalogue(signal?: AbortSignal): Promise<Catalogue>;
+  weightPolicy: CustomerApi['weightPolicy'];
+  quote: CustomerApi['quote'];
   recommendations(signal?: AbortSignal): Promise<RecommendationDto>;
   collections(
     view: 'active' | 'history',
@@ -80,6 +82,8 @@ export function createHttpRepositories(
 ): CustomerRepositories {
   return {
     source: 'backend',
+    weightPolicy: customer.weightPolicy,
+    quote: customer.quote,
     catalogue: async (signal) =>
       catalogueFromDto(await customer.catalogue(signal)),
     recommendations: customer.recommendations,

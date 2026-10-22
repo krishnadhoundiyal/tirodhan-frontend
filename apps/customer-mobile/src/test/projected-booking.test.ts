@@ -8,6 +8,7 @@ import {
   slotSelectable,
   type ContextSlots,
   type SlotHold,
+  type HoldSlot,
 } from '../api/slot-contracts';
 import type { CollectionCreate, CollectionResponse } from '../api/contracts';
 import {
@@ -47,6 +48,16 @@ const availability = (): ContextSlots => ({
 });
 function intent(): BookingIntent {
   const slots = availability();
+  const items = [
+    {
+      item_category_code: 'flowers',
+      declared_quantity: 2,
+      declared_weight_grams: 1000,
+      weight_band: 'BELOW_B' as const,
+      weight_kg: null,
+      declared_volume_ml: 2500,
+    },
+  ];
   return {
     context: {
       serviceability_context_id: id(1),
@@ -60,20 +71,31 @@ function intent(): BookingIntent {
     },
     availability: slots,
     slot: slots.slots[0]!,
-    items: [
-      {
-        item_category_code: 'flowers',
-        declared_quantity: 2,
-        declared_weight_grams: null,
+    items,
+    quote: {
+      items,
+      total_weight_grams: 1000,
+      total_volume_ml: 2500,
+      total_amount_minor: 35000,
+      minimum_amount_minor: 35000,
+      maximum_amount_minor: 35000,
+      currency: 'INR',
+      confirmation: {
+        policy_id: id(30),
+        policy_revision: 1,
+        quote_fingerprint: 'a'.repeat(64),
       },
-    ],
-    // Explicit synthetic inputs ONLY for state-machine tests, never production configuration.
-    load: { mass_g: 1000, volume_ml: 2500 },
+      confirmation_freshness: 'CURRENT_POLICY_REVISION',
+      rounding: 'HALF_UP_MINOR_UNIT',
+      live_customer_holds_available: true,
+      hold_blocker: null,
+    },
   };
 }
 const held = (): SlotHold => ({
   reservation_id: id(10),
   admission_basis: 'PROJECTED_ALLOWANCE',
+  bound_request_id: null,
   bookable: true,
   book_by: iso(5),
   expires_at: iso(10),
@@ -94,6 +116,9 @@ const booked = (body: CollectionCreate): CollectionResponse => ({
     quoted_line_amount_minor: 35000,
     currency: 'INR',
     pricing_rule_version: 'server-rule',
+    weight_band: item.weight_band,
+    weight_kg: item.weight_kg,
+    declared_volume_ml: item.declared_volume_ml,
   })),
 });
 function setup() {
@@ -114,7 +139,7 @@ function setup() {
   let bookingBody!: CollectionCreate;
   const bookingExecute = jest.fn(async () => booked(bookingBody));
   const repo = {
-    holdSlot: jest.fn(() => ({ execute: holdExecute })),
+    holdSlot: jest.fn((_body: HoldSlot) => ({ execute: holdExecute })),
     readHold: jest.fn(async () => held()),
     createCollection: jest.fn((body: CollectionCreate) => {
       bookingBody = body;
@@ -182,7 +207,7 @@ test.each(['FULL', 'UNKNOWN'] as const)(
 test('missing approved physical inputs blocks before preparing or writing any command', async () => {
   const s = setup();
   await expect(
-    s.flow.submit({ ...intent(), load: null }),
+    s.flow.submit({ ...intent(), quote: null }),
   ).rejects.toBeInstanceOf(PhysicalLoadRequired);
   expect(s.repo.holdSlot).not.toHaveBeenCalled();
   expect(s.storage.set).not.toHaveBeenCalled();
@@ -219,6 +244,8 @@ test('duplicate taps share one hold and booking; server durations, generation an
     volume_ml: 2500,
     pickup_seconds: 300,
     discharge_seconds: 120,
+    items: input.items,
+    confirmed_quote: input.quote!.confirmation,
   });
   expect(s.repo.createCollection).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -353,20 +380,22 @@ test('malformed booking success stays ambiguous, never paid or complete', async 
   });
   expect(s.flow.getSnapshot()).toBe('uncertainBooking');
 });
-test('restart retains minimal owner identifiers and prevents an unrelated booking', async () => {
+test('restart restores exact commands and replays an uncertain booking with its original identity', async () => {
   const s = setup();
   s.bookingExecute.mockRejectedValueOnce(new ApiError(0, 'timeout'));
   await expect(s.flow.submit(intent())).rejects.toBeInstanceOf(ApiError);
   const stored = await s.recovery.read('customer');
-  expect(stored).toEqual({
-    owner: 'customer',
-    holdCommandId: id(10),
-    reservationId: id(10),
-    bookingCommandId: id(11),
-  });
+  expect(stored).toEqual(
+    expect.objectContaining({
+      owner: 'customer',
+      holdCommandId: id(10),
+      reservationId: id(10),
+      bookingCommandId: id(11),
+    }),
+  );
   expect(
     s.storage.set.mock.calls.every(
-      ([v]) => !/items|slot_start|address|mass_g|token|latitude/.test(v),
+      ([v]) => !/address|token|latitude|longitude/.test(v),
     ),
   ).toBe(true);
   const restarted = s.makeFlow();
@@ -375,10 +404,11 @@ test('restart retains minimal owner identifiers and prevents an unrelated bookin
   await expect(restarted.submit(intent())).rejects.toBeInstanceOf(
     RecoveryRequired,
   );
-  await expect(restarted.recoverRestart()).rejects.toBeInstanceOf(
-    RecoveryRequired,
+  await expect(restarted.recoverRestart()).resolves.toBe(id(20));
+  expect(s.repo.createCollection).toHaveBeenCalledTimes(2);
+  expect(s.repo.createCollection.mock.calls[0]![0]).toEqual(
+    s.repo.createCollection.mock.calls[1]![0],
   );
-  expect(s.repo.createCollection).toHaveBeenCalledTimes(1);
 });
 test('restart may resolve a never-booked expired hold, but cannot call an unbookable hold a failed booking', async () => {
   const s = setup();
@@ -425,11 +455,13 @@ test('address change during hold acquisition invalidates binding and preserves r
   );
   expect(s.repo.createCollection).not.toHaveBeenCalled();
   expect(s.flow.getSnapshot()).toBe('restart');
-  expect(await s.recovery.read('customer')).toEqual({
-    owner: 'customer',
-    holdCommandId: id(10),
-    reservationId: id(10),
-  });
+  expect(await s.recovery.read('customer')).toEqual(
+    expect.objectContaining({
+      owner: 'customer',
+      holdCommandId: id(10),
+      reservationId: id(10),
+    }),
+  );
   s.advance(6);
   await expect(s.flow.recoverRestart()).resolves.toBeNull();
   expect(s.flow.getSnapshot()).toBe('idle');
@@ -482,7 +514,8 @@ test('HTTP hold exact replay freezes the body and uses no legacy idempotency hea
     expected_generation: 3,
     slot_start: i.slot.slot_start,
     slot_end: i.slot.slot_end,
-    ...i.load!,
+    mass_g: i.quote!.total_weight_grams,
+    volume_ml: i.quote!.total_volume_ml!,
     pickup_seconds: 300,
     discharge_seconds: 120,
   };
@@ -569,4 +602,107 @@ test('a failed recovery-store write prevents a new hold request', async () => {
   s.storage.set.mockRejectedValueOnce(new Error('storage unavailable'));
   await expect(s.flow.submit(intent())).rejects.toThrow('storage unavailable');
   expect(s.holdExecute).not.toHaveBeenCalled();
+});
+test('both exact confirmed commands are durable before the first hold POST', async () => {
+  const s = setup();
+  s.holdExecute.mockImplementationOnce(async () => {
+    const record = await s.recovery.read('customer');
+    expect(record?.holdBody?.items).toEqual(intent().quote!.items);
+    expect(record?.holdBody?.mass_g).toBe(1000);
+    expect(record?.holdBody?.volume_ml).toBe(2500);
+    expect(record?.bookingBody?.confirmed_quote).toEqual(
+      record?.holdBody?.confirmed_quote,
+    );
+    expect(record?.bookingSubmitted).toBe(false);
+    return held();
+  });
+  await s.flow.submit(intent());
+});
+test.each([false, true])(
+  'restart follows a bound request without a new booking even after expiry=%s',
+  async (expired) => {
+    const s = setup();
+    s.holdExecute.mockRejectedValueOnce(new ApiError(0, 'timeout'));
+    await expect(s.flow.submit(intent())).rejects.toBeInstanceOf(ApiError);
+    if (expired) s.advance(60);
+    s.repo.readHold.mockResolvedValue({
+      ...held(),
+      bookable: false,
+      bound_request_id: id(20),
+    });
+    const restarted = s.makeFlow();
+    const first = restarted.recoverRestart(),
+      duplicate = restarted.recoverRestart();
+    expect(duplicate).toBe(first);
+    await expect(first).resolves.toBe(id(20));
+    expect(s.repo.createCollection).not.toHaveBeenCalled();
+    expect((await s.recovery.read('customer'))?.requestId).toBe(id(20));
+    await s.recovery.resolve('other', id(20));
+    expect(await s.recovery.read('customer')).not.toBeNull();
+    await s.recovery.resolve('customer', id(20));
+    expect(await s.recovery.read('customer')).toBeNull();
+  },
+);
+test('restart after lost hold plus 404 replays the original body and generation', async () => {
+  const s = setup();
+  s.holdExecute.mockRejectedValueOnce(new ApiError(0, 'timeout'));
+  await expect(s.flow.submit(intent())).rejects.toBeInstanceOf(ApiError);
+  const original = (await s.recovery.read('customer'))!.holdBody;
+  s.repo.readHold.mockRejectedValueOnce(new ApiError(404));
+  await expect(s.makeFlow().recoverRestart()).resolves.toBe(id(20));
+  expect(s.repo.holdSlot.mock.calls[1]![0]).toEqual(original);
+  expect(s.holdExecute).toHaveBeenCalledTimes(2);
+});
+test('restart null binding after uncertain booking retains the same identity through further 5xx and expired hold', async () => {
+  const s = setup();
+  s.bookingExecute
+    .mockRejectedValueOnce(new ApiError(503))
+    .mockRejectedValueOnce(new ApiError(500));
+  await expect(s.flow.submit(intent())).rejects.toMatchObject({ status: 503 });
+  const original = (await s.recovery.read('customer'))!.bookingBody;
+  s.advance(60);
+  s.repo.readHold.mockResolvedValue({
+    ...held(),
+    bookable: false,
+    bound_request_id: null,
+  });
+  const restarted = s.makeFlow();
+  await expect(restarted.recoverRestart()).rejects.toMatchObject({
+    status: 500,
+  });
+  expect((await s.recovery.read('customer'))!.bookingBody).toEqual(original);
+  await expect(restarted.recoverRestart()).resolves.toBe(id(20));
+  expect(
+    s.repo.createCollection.mock.calls.every(
+      ([body]) => JSON.stringify(body) === JSON.stringify(original),
+    ),
+  ).toBe(true);
+});
+test('a server amount different from the reviewed confirmed quote cannot be displayed as successful booking', async () => {
+  const s = setup();
+  s.bookingExecute.mockResolvedValueOnce({
+    ...booked({
+      client_request_id: id(11),
+      serviceability_context_id: id(1),
+      slot_start: iso(60),
+      slot_end: iso(90),
+      items: intent().items,
+    }),
+    quoted_amount_minor: 35001,
+  });
+  await expect(s.flow.submit(intent())).rejects.toMatchObject({
+    kind: 'protocol',
+  });
+  expect(s.flow.getSnapshot()).toBe('uncertainBooking');
+});
+test('editing after authoritative success permits an explicit next intent but never unlocks ambiguity', async () => {
+  const s = setup();
+  s.holdExecute.mockRejectedValueOnce(new ApiError(503));
+  await expect(s.flow.submit(intent())).rejects.toMatchObject({ status: 503 });
+  s.flow.startNext();
+  expect(s.flow.getSnapshot()).toBe('uncertainHold');
+  await s.flow.submit();
+  expect(s.flow.getSnapshot()).toBe('complete');
+  s.flow.startNext();
+  expect(s.flow.getSnapshot()).toBe('idle');
 });

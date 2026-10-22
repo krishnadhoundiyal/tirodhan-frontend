@@ -39,7 +39,7 @@ beforeEach(() => {
   process.env.EXPO_PUBLIC_PREVIEW_CATALOGUE = 'true';
   // Exercise enabled API gates too: isolation must not depend on an absent capability.
   process.env.EXPO_PUBLIC_CUSTOMER_CAPABILITIES =
-    'principal,collections,payment,checkout,refunds,profile,push';
+    'principal,collections,payment,checkout,refunds,profile,push,weightPricing';
   jest.clearAllMocks();
   jest
     .mocked(SecureStore.getItemAsync)
@@ -58,6 +58,34 @@ const expectNoCredentials = () => {
   expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
 };
+test('authentication loss retains pending commands for the same owner; explicit logout clears them', async () => {
+  const app = load('NONPROD');
+  fetchSpy.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => ({ user_id: 'customer', roles: ['CUSTOMER'] }),
+  } as Response);
+  await app.session.establish({
+    user_id: 'customer',
+    access_token: 'access',
+    refresh_token: 'refresh',
+    token_type: 'bearer',
+    expires_in: 60,
+  });
+  await app.session.clear();
+  expect(
+    jest
+      .mocked(SecureStore.deleteItemAsync)
+      .mock.calls.some(([key]) =>
+        key.startsWith('tirodhan.customer.booking-recovery'),
+      ),
+  ).toBe(false);
+  await app.logout().catch(() => {});
+  expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(
+    'tirodhan.customer.booking-recovery',
+  );
+  app.queryClient.clear();
+});
 test('preview startup, foreground renewal and logout never consume or modify an existing credential', async () => {
   const app = load('SCREEN_PREVIEW');
   const bootstrap = jest.spyOn(app.session, 'bootstrap');
@@ -110,6 +138,18 @@ test('public OTP, principal, checkout, refund and all HTTP methods are blocked b
       client_login_id: 'id',
     }),
     app.customerApi.principal(),
+    app.customerApi.weightPolicy(),
+    app.customerApi.quote({
+      policy_id: '66666666-6666-4666-8666-666666666666',
+      policy_revision: 1,
+      items: [
+        {
+          item_category_code: 'flowers',
+          weight_band: 'BELOW_B',
+          declared_volume_ml: 2500,
+        },
+      ],
+    }),
     app.api.addresses(),
     app.customerApi.checkout('attempt'),
     app.customerApi.refunds('collection'),

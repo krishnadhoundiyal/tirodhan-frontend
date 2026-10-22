@@ -3,6 +3,7 @@ export type CustomerCapability =
   | 'principal'
   | 'catalogue'
   | 'slots'
+  | 'weightPricing'
   | 'collections'
   | 'recommendations'
   | 'payment'

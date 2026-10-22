@@ -20,6 +20,16 @@ import { developmentAddresses } from '../features/collection/developmentReposito
 import { repositories } from '../lib/repositories';
 import { Body, Button } from '../components/ui';
 import * as Location from 'expo-location';
+import { developmentWeightPolicy } from '../features/collection/developmentWeightPricing';
+import { createCustomerApi } from '../api/customer-client';
+import { createApi } from '../api/client';
+import { Transport } from '../api/transport';
+import { ApiError } from '../api/errors';
+let mockCommandSequence = 40;
+jest.mock('expo-crypto', () => ({
+  randomUUID: () =>
+    `77777777-7777-4777-8777-${String(++mockCommandSequence).padStart(12, '0')}`,
+}));
 let mockRequestId = '11111111-1111-4111-8111-111111111111';
 let mockCompensationEnabled = true;
 jest.setTimeout(20000);
@@ -72,6 +82,12 @@ function Seed({ far = false }: { far?: boolean }) {
     seeded.current = true;
     draft.selectAddress(developmentAddresses[0]!);
     draft.toggleCategory('flowers');
+    draft.declare('flowers', {
+      weightBand: 'BELOW_B',
+      volumeLitres: '2.5',
+      policyId: developmentWeightPolicy.policy_id,
+      policyRevision: developmentWeightPolicy.policy_revision,
+    });
     if (far) draft.setCurrentLocation(developmentAddresses[0]!.location!);
   }, [draft, far]);
   return (
@@ -96,6 +112,13 @@ async function show(element: React.ReactNode, seed = false, far = false) {
   );
   await waitFor(() => expect(client.isFetching()).toBe(0));
 }
+async function reviewPrice() {
+  await fireEvent.press(
+    await screen.findByRole('checkbox', {
+      name: 'I have reviewed this pickup price',
+    }),
+  );
+}
 beforeAll(() => {
   notifyManager.setScheduler((callback) => queueMicrotask(callback));
 });
@@ -119,8 +142,15 @@ function ChangeTestAddress() {
     />
   );
 }
-test('backend Review exposes projected states but blocks submission without approved mass and volume', async () => {
+test('backend Review exposes projected states but incomplete volumes block hold submission', async () => {
   repositories.source = 'backend';
+  const original = repositories.quote.bind(repositories);
+  jest.spyOn(repositories, 'quote').mockImplementation(async (input) => ({
+    ...(await original(input)),
+    total_volume_ml: null,
+    live_customer_holds_available: false,
+    hold_blocker: 'ITEM_VOLUME_DECLARATIONS_REQUIRED',
+  }));
   const hold = jest.spyOn(repositories, 'holdSlot');
   await show(<ReviewScreen />, true);
   await fireEvent.press(
@@ -137,7 +167,7 @@ test('backend Review exposes projected states but blocks submission without appr
   ).toBe(true);
   expect(
     screen.getByText(
-      'Booking is temporarily unavailable while Tirodhan confirms the required pickup load details.',
+      'Enter the occupied volume for every selected item before booking.',
     ),
   ).toBeTruthy();
   expect(hold).not.toHaveBeenCalled();
@@ -151,6 +181,7 @@ test('refresh and changed address invalidate a previous slot selection', async (
     </>,
     true,
   );
+  await reviewPrice();
   await fireEvent.press(
     screen.getByRole('button', { name: 'Check pickup availability' }),
   );
@@ -194,6 +225,7 @@ test('late availability from the previous address cannot replace the current con
     </>,
     true,
   );
+  await reviewPrice();
   await fireEvent.press(
     screen.getByRole('button', { name: 'Check pickup availability' }),
   );
@@ -264,6 +296,7 @@ test('Review item selector edits inline, preserves address, supports quantities 
 });
 test('Review requires serviceability and a server slot, then opens pending payment detail', async () => {
   await show(<ReviewScreen />, true);
+  await reviewPrice();
   expect(
     screen.getByRole('button', { name: 'Confirm & Pay →' }).props
       .accessibilityState.disabled,
@@ -287,6 +320,272 @@ test('Review requires serviceability and a server slot, then opens pending payme
   expect(
     (await repositories.detail(route.params.requestId)).payment.status,
   ).toBe('PENDING');
+});
+test('NONPROD Review completes declarations, reviewed quote, V2 hold and pending-payment booking through HTTP adapters', async () => {
+  const quoteFixture = repositories.quote.bind(repositories);
+  repositories.source = 'backend';
+  const contextId = '88888888-8888-4888-8888-888888888888';
+  const requestId = '99999999-9999-4999-8999-999999999999';
+  const start = Math.ceil((Date.now() + 86400000) / 1800000) * 1800000;
+  const context = {
+    serviceability_context_id: contextId,
+    source_address_id: developmentAddresses[0]!.address_id,
+    source_address_version: 1,
+    status: 'SERVICEABLE',
+    cell_id: null,
+    failure_code: null,
+    expires_at: new Date(Date.now() + 1200000).toISOString(),
+    resolved_at: new Date().toISOString(),
+  };
+  let holdBody!: import('../api/slot-contracts').HoldSlot;
+  let bookingBody!: import('../api/contracts').CollectionCreate;
+  const hold = () => ({
+    reservation_id: holdBody.client_command_id,
+    bound_request_id: null,
+    admission_basis: 'PROJECTED_ALLOWANCE',
+    bookable: true,
+    book_by: new Date(Date.now() + 300000).toISOString(),
+    expires_at: new Date(Date.now() + 600000).toISOString(),
+  });
+  const fetcher = jest.fn(
+    async (url: string | URL | Request, options?: RequestInit) => {
+      const path = String(url).replace('https://nonprod.example', '');
+      const body = options?.body ? JSON.parse(String(options.body)) : null;
+      let result: unknown;
+      if (path === '/v1/customer/weight-pricing-policy')
+        result = developmentWeightPolicy;
+      else if (path === '/v1/customer/collection-quotes')
+        result = await quoteFixture(body);
+      else if (path.startsWith('/v1/serviceability/contexts')) result = context;
+      else if (path.startsWith('/v2/customer/slot-availability'))
+        result = {
+          region_id: contextId,
+          capacity_certified: false,
+          allowance_is_estimate: true,
+          standard_pickup_seconds: 300,
+          standard_discharge_seconds: 120,
+          slots: [
+            {
+              slot_start: new Date(start).toISOString(),
+              slot_end: new Date(start + 1800000).toISOString(),
+              status: 'LIMITED',
+              remaining_bookings: 1,
+              policy_version: 1,
+              source_version: 1,
+              generation: 3,
+              computed_at: new Date().toISOString(),
+              valid_until: context.expires_at,
+              admission_basis: 'PROJECTED_ALLOWANCE',
+              capacity_certified: false,
+            },
+          ],
+        };
+      else if (path === '/v2/customer/slot-holds') {
+        holdBody = body;
+        result = hold();
+      } else if (path.startsWith('/v2/customer/slot-holds/')) result = hold();
+      else if (path === '/v1/collection-requests') {
+        bookingBody = body;
+        result = {
+          request_id: requestId,
+          client_request_id: body.client_request_id,
+          status: 'PENDING_PAYMENT',
+          quoted_amount_minor: 35000,
+          currency: 'INR',
+          payment_id: contextId,
+          payment_expires_at: context.expires_at,
+          items: body.items.map(
+            (item: import('../api/contracts').CollectionItemInput) => ({
+              ...item,
+              request_item_id: requestId,
+              quoted_line_amount_minor: 35000,
+              currency: 'INR',
+              pricing_rule_version: 'server-fixture',
+            }),
+          ),
+        };
+      } else throw new Error('Unexpected HTTP contract in test');
+      return { ok: true, status: 200, json: async () => result } as Response;
+    },
+  );
+  const transport = new Transport(
+    'https://nonprod.example',
+    {
+      accessToken: () => 'mock-owner-token',
+      refresh: async () => {},
+      clear: async () => {},
+    },
+    () => 'header-key',
+    fetcher,
+  );
+  const api = createApi(transport),
+    customer = createCustomerApi(transport, () => {});
+  jest
+    .spyOn(repositories, 'weightPolicy')
+    .mockImplementation(customer.weightPolicy);
+  jest.spyOn(repositories, 'quote').mockImplementation(customer.quote);
+  jest
+    .spyOn(repositories, 'serviceability')
+    .mockImplementation((address) =>
+      api.serviceability({ source_address_id: address.address_id }),
+    );
+  jest
+    .spyOn(repositories, 'readServiceability')
+    .mockImplementation(api.readServiceability);
+  jest.spyOn(repositories, 'slots').mockImplementation(customer.slots);
+  jest.spyOn(repositories, 'holdSlot').mockImplementation(api.holdSlot);
+  jest.spyOn(repositories, 'readHold').mockImplementation(api.readHold);
+  jest
+    .spyOn(repositories, 'createCollection')
+    .mockImplementation(api.createCollection);
+  await show(<ReviewScreen />, true);
+  expect(await screen.findByText('Pickup price: ₹350.00')).toBeTruthy();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Check pickup availability' }),
+  );
+  await fireEvent.press((await screen.findAllByRole('radio'))[0]!);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
+  await reviewPrice();
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }),
+  );
+  await waitFor(() =>
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/collections/[requestId]',
+      params: { requestId },
+    }),
+  );
+  expect(holdBody.mass_g).toBe(2000);
+  expect(holdBody.volume_ml).toBe(2500);
+  expect(holdBody.items).toEqual(bookingBody.items);
+  expect(holdBody.confirmed_quote).toEqual(bookingBody.confirmed_quote);
+  expect(bookingBody.capacity_reservation_id).toBe(holdBody.client_command_id);
+  expect(
+    fetcher.mock.calls.filter(([url]) =>
+      String(url).endsWith('/v2/customer/slot-holds'),
+    ),
+  ).toHaveLength(1);
+  expect(bookingBody).not.toHaveProperty('total_amount_minor');
+});
+test('editing volume refreshes the quote, clears price review and incomplete entry blocks confirmation', async () => {
+  const quote = jest.spyOn(repositories, 'quote');
+  await show(<ReviewScreen />, true);
+  await reviewPrice();
+  await fireEvent.press(screen.getByText('Add or edit →'));
+  await fireEvent.changeText(
+    await screen.findByLabelText(
+      'Occupied volume in litres for Used Flowers & Garlands',
+    ),
+    '3.125',
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Done · return to Review' }),
+  );
+  await screen.findByText('Total declared volume: 3.125 L');
+  expect(
+    screen.getByRole('checkbox', { name: 'I have reviewed this pickup price' })
+      .props.accessibilityState.checked,
+  ).toBe(false);
+  expect(quote.mock.calls.at(-1)?.[0].items[0]?.declared_volume_ml).toBe(3125);
+  await fireEvent.press(screen.getByText('Add or edit →'));
+  await fireEvent.changeText(
+    await screen.findByLabelText(
+      'Occupied volume in litres for Used Flowers & Garlands',
+    ),
+    '',
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Done · return to Review' }),
+  );
+  expect(
+    await screen.findByText(
+      'Enter the occupied volume for every selected item before booking.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
+});
+test('numerical kilograms appear only above T and exact threshold cannot request a quote', async () => {
+  const quote = jest.spyOn(repositories, 'quote');
+  await show(<ReviewScreen />, true);
+  await fireEvent.press(screen.getByText('Add or edit →'));
+  expect(
+    screen.queryByLabelText('Weight in kilograms for Used Flowers & Garlands'),
+  ).toBeNull();
+  await fireEvent.press(
+    await screen.findByRole('radio', {
+      name: /Larger collection.*Used Flowers & Garlands/,
+    }),
+  );
+  const input = await screen.findByLabelText(
+    'Weight in kilograms for Used Flowers & Garlands',
+  );
+  await fireEvent.changeText(input, '10');
+  const calls = quote.mock.calls.length;
+  await fireEvent.changeText(input, '10.001');
+  await waitFor(() => expect(quote.mock.calls.length).toBeGreaterThan(calls));
+  expect(quote.mock.calls.at(-1)?.[0].items[0]?.weight_kg).toBe('10.001');
+  await fireEvent.press(
+    screen.getByRole('radio', {
+      name: /Small collection.*Used Flowers & Garlands/,
+    }),
+  );
+  expect(
+    screen.queryByLabelText('Weight in kilograms for Used Flowers & Garlands'),
+  ).toBeNull();
+  await waitFor(() =>
+    expect(quote.mock.calls.at(-1)?.[0].items[0]?.weight_kg).toBeNull(),
+  );
+});
+test('stale quote refreshes current policy and requires explicit band reselection and price review', async () => {
+  const read = jest.spyOn(repositories, 'weightPolicy');
+  const quote = jest.spyOn(repositories, 'quote');
+  await show(<ReviewScreen />, true);
+  await reviewPrice();
+  read.mockResolvedValue({
+    ...developmentWeightPolicy,
+    policy_revision: 2,
+    first_band_label: 'Updated small band',
+  });
+  quote.mockRejectedValueOnce(
+    new ApiError(409, 'http', 'WEIGHT_POLICY_CHANGED_REVIEW_DECLARATIONS'),
+  );
+  await fireEvent.press(screen.getByText('Add or edit →'));
+  await fireEvent.changeText(
+    await screen.findByLabelText(
+      'Occupied volume in litres for Used Flowers & Garlands',
+    ),
+    '3',
+  );
+  expect(
+    await screen.findByText(
+      'Weight bands have changed. Please select a current band.',
+    ),
+  ).toBeTruthy();
+  await fireEvent.press(
+    await screen.findByRole('radio', {
+      name: /Updated small band.*Used Flowers & Garlands/,
+    }),
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Done · return to Review' }),
+  );
+  await waitFor(() =>
+    expect(quote.mock.calls.at(-1)?.[0].policy_revision).toBe(2),
+  );
+  expect(
+    screen.getByRole('checkbox', { name: 'I have reviewed this pickup price' })
+      .props.accessibilityState.checked,
+  ).toBe(false);
+  expect(
+    screen.getByRole('button', { name: 'Confirm & Pay →' }).props
+      .accessibilityState.disabled,
+  ).toBe(true);
 });
 test('a terminal technical failure permits a fresh availability check instead of replaying the failed context', async () => {
   const original = repositories.readServiceability.bind(repositories);

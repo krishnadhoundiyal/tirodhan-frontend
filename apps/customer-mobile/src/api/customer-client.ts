@@ -20,6 +20,7 @@ import type {
   RefundRead,
 } from './customer-contracts';
 import { parseAvailability, type ContextSlots } from './slot-contracts';
+import { parsePolicy, parseQuote, type QuoteInput } from './weight-contracts';
 
 export function createCustomerApi(
   transport: Transport,
@@ -38,6 +39,25 @@ export function createCustomerApi(
     return `${path}${value ? `&cursor=${encodeURIComponent(value)}` : ''}`;
   }
   return {
+    weightPolicy: async (signal?: AbortSignal) =>
+      parsePolicy(
+        await read<unknown>(
+          'weightPricing',
+          '/v1/customer/weight-pricing-policy',
+          signal,
+        ),
+      ),
+    quote: async (body: QuoteInput, signal?: AbortSignal) => {
+      requireCapability('weightPricing');
+      return parseQuote(
+        await transport.request<unknown>('/v1/customer/collection-quotes', {
+          method: 'POST',
+          body,
+          signal,
+        }),
+        body,
+      );
+    },
     principal: (signal?: AbortSignal) => {
       requireCapability('principal');
       // A rejected live principal invalidates credentials; it must never await its own refresh flight.

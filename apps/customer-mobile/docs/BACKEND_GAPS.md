@@ -1,5 +1,10 @@
 # Backend completion handoff
 
+> Current: [WEIGHT_VOLUME_BOOKING_REPORT.md](WEIGHT_VOLUME_BOOKING_REPORT.md).
+> Backend `b281e03a` supplies weight pricing, item volumes and bound_request_id.
+> Their frontend integration is implemented; the historical physical-input and
+> missing-binding blockers below no longer apply to new native workflows.
+
 > 21 October 2026: historical slot findings below are superseded by
 > [PROJECTED_BOOKING_REPORT.md](PROJECTED_BOOKING_REPORT.md), verified against backend
 > `main` at `c1e2e7c`. V2 projections/holds and reservation binding exist and have

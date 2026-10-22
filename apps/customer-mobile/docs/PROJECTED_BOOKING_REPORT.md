@@ -1,5 +1,9 @@
 # CM-P0-01: Projected slots and atomic booking integration
 
+> Historical report. The later [weight/volume booking increment](WEIGHT_VOLUME_BOOKING_REPORT.md)
+> uses backend `b281e03a` and resolves the physical-load and bound-request recovery
+> blockers below for new native workflows. Retained here as implementation history.
+
 Source verification: 21 October 2026. Delivery: 22 October 2026, Asia/Kolkata.
 
 **Live hold/booking submission is deliberately blocked pending an approved source
