@@ -14,6 +14,23 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-secure-store',
     'expo-font',
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'Capture Rider pickup and handover evidence and scan managed labels.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: true,
+      },
+    ],
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Measure your location when recording a receiving-point handover.',
+      },
+    ],
     ['expo-splash-screen', { backgroundColor: '#F8F5EF' }],
   ],
 };

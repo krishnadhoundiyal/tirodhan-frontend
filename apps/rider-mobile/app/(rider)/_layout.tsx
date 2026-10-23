@@ -15,6 +15,7 @@ export default function RiderLayout() {
         <Tabs.Screen name="index" options={{ title: 'Home' }} />
         <Tabs.Screen name="offers" options={{ title: 'Offers' }} />
         <Tabs.Screen name="assignment" options={{ title: 'Active work' }} />
+        <Tabs.Screen name="evidence" options={{ title: 'Evidence' }} />
         <Tabs.Screen name="account" options={{ title: 'Account' }} />
       </Tabs>
     </Admission>

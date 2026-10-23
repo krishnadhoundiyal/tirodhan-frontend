@@ -24,7 +24,7 @@ export const executionMessages = {
   PICKUP_NOT_STARTED:
     'The next assigned pickup must be started before recording its outcome.',
   UNSUCCESSFUL_ATTEMPT_EVIDENCE_REQUIRED:
-    'This unsuccessful attempt requires real evidence capture, reserved for RM-P0-03.',
+    'This unsuccessful attempt requires a new real photo. Open Evidence to record the routed outcome.',
   PHYSICAL_CAPACITY_EXCEEDED:
     'The vehicle does not have the required physical capacity. Contact operations.',
   COMMAND_IN_PROGRESS:
