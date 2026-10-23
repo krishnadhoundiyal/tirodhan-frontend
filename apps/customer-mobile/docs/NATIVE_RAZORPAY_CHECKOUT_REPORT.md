@@ -20,8 +20,9 @@ application testing have not passed and are not implied by JavaScript tests or
 Hermes exports. The complete native checkout acceptance target remains pending.
 
 There was no push, merge, deployment, backend change, production credential
-creation, or paid build request. Dependency/security policies and Expo/RN
-versions have not been changed.
+creation, or paid build request. Following explicit human approval, the free EAS
+project was created and linked as described below. Dependency/security policies
+and Expo/RN versions have not been changed.
 
 ## Implemented frontend behavior
 
@@ -165,15 +166,26 @@ The actual read-only `eas project:info` result was:
 EAS project not configured. This command cannot configure it in non-interactive mode.
 ```
 
-Automatic approval review rejected `eas init --account tirodhan` before execution:
-EAS investigation did not explicitly authorize cloud project creation or app
-linkage changes. A concrete approval request is pending for
-`@tirodhan/tirodhan-customer`, recording owner/project ID, source upload and free
-Android development builds. No project was created/linked and no source uploaded.
-That authorization must be resolved before those cloud actions; do not bypass the
-rejection with another tool or an indirect API call.
+Automatic approval review initially rejected `eas init --account tirodhan`
+because investigation alone did not authorize cloud project creation/linkage.
+The human subsequently explicitly approved the free project, owner/project ID
+configuration, source upload and free Android development builds. That approval
+resolved the earlier restriction; no workaround was used.
 
-Once SDK installation, project authorization and linkage are complete:
+The approved command created
+[@tirodhan/tirodhan-customer](https://expo.dev/accounts/tirodhan/projects/tirodhan-customer),
+then exited with `Cannot automatically write to dynamic config at: app.config.ts`.
+The returned project ID `265eed10-2b38-4186-a150-10831653ab7e` and owner `tirodhan`
+were added explicitly to `app.config.ts`. A subsequent `eas project:info --json`
+resolved that exact full name and ID successfully. Free quota was rechecked:
+0/15 Android and 0/30 total builds used. No build source has been uploaded, native
+build started or production credential created yet.
+
+The linked configuration passed TypeScript, targeted ESLint, formatting and Expo
+Doctor 21/21. Doctor's first remote schema request failed with a TLS connection
+interruption; its retry passed without exclusions or configuration changes.
+
+Once SDK installation and the native adapter binding are complete:
 
 ```powershell
 # Run from apps/customer-mobile with the existing authenticated EAS CLI.
@@ -197,19 +209,19 @@ merchant or device acceptance has been performed here.
 
 ## Validation results for the frontend phase
 
-| Validation                                            | Result                                                             |
-| ----------------------------------------------------- | ------------------------------------------------------------------ |
-| TypeScript                                            | Passed                                                             |
-| ESLint                                                | Passed, zero warnings                                              |
-| Formatting                                            | Passed with Windows line-ending adaptation                         |
-| Jest                                                  | 279 tests, 23 suites passed; no skips or force-exit                |
-| Expo Doctor                                           | 21/21 passed on retry; first remote schema check had TLS failure   |
-| Android/iOS Hermes and web exports                    | Passed: Android/iOS Hermes and web bundles                         |
-| EAS build-profile schema                              | Passed using official EAS JSON schema                              |
-| Official Razorpay SDK installation                    | Deferred until inherited release-age cutoff                        |
-| Android native compilation                            | Not run; SDK installation and EAS project approval/linkage pending |
-| iOS native compilation                                | Not run; no macOS toolchain                                        |
-| Real device / bank application / live backend payment | Not tested                                                         |
+| Validation                                            | Result                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------- |
+| TypeScript                                            | Passed                                                           |
+| ESLint                                                | Passed, zero warnings                                            |
+| Formatting                                            | Passed with Windows line-ending adaptation                       |
+| Jest                                                  | 279 tests, 23 suites passed; no skips or force-exit              |
+| Expo Doctor                                           | 21/21 passed on retry; first remote schema check had TLS failure |
+| Android/iOS Hermes and web exports                    | Passed: Android/iOS Hermes and web bundles                       |
+| EAS build-profile schema                              | Passed using official EAS JSON schema                            |
+| Official Razorpay SDK installation                    | Deferred until inherited release-age cutoff                      |
+| Android native compilation                            | Not run; SDK installation/binding pending; EAS project linked    |
+| iOS native compilation                                | Not run; no macOS toolchain                                      |
+| Real device / bank application / live backend payment | Not tested                                                       |
 
 VirtualizedList act warnings were observed during the full suite; the run exited normally. Local checks use pnpm-generated launchers directly because pnpm run currently
 tries the inherited age-blocked reinstall. Jest uses an ignored local transform
@@ -221,6 +233,7 @@ records implemented frontend work and explicitly outstanding native validation.
 ## Changed files
 
 - apps/customer-mobile/docs/NATIVE_RAZORPAY_CHECKOUT_REPORT.md
+- apps/customer-mobile/app.config.ts
 - apps/customer-mobile/eas.json
 - apps/customer-mobile/src/api/client.ts
 - apps/customer-mobile/src/api/contracts.ts
