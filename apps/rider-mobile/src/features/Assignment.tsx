@@ -1,4 +1,5 @@
 import { useRiderResource } from '../hooks';
+import ExecutionPanel from './execution/ExecutionPanel';
 import {
   Body,
   Button,
@@ -16,6 +17,16 @@ export default function AssignmentScreen() {
   const route = routeQuery.data;
   return (
     <Page title="Active Assignment">
+      <ExecutionPanel
+        assignment={assignment ?? null}
+        route={route ?? null}
+        ready={
+          query.isSuccess &&
+          routeQuery.isSuccess &&
+          !query.isFetching &&
+          !routeQuery.isFetching
+        }
+      />
       {query.isPending && <Loading />}
       <ErrorState error={query.error} />
       {query.error && assignment && (
@@ -135,8 +146,8 @@ export default function AssignmentScreen() {
       )}
       <Muted>
         Order is supplied by the service. Planned windows are not live arrival
-        estimates. Pickup, incidents, evidence and handover actions are part of
-        the next Rider increment.
+        estimates. Evidence capture, media upload and handover remain part of
+        RM-P0-03.
       </Muted>
       <Button
         title="Refresh assignment and route"
