@@ -3,6 +3,7 @@ export type CustomerCapability =
   | 'principal'
   | 'catalogue'
   | 'slots'
+  | 'weightPricing'
   | 'collections'
   | 'recommendations'
   | 'payment'
@@ -17,12 +18,6 @@ export type CustomerCapability =
   | 'paymentMethods'
   | 'feedback'
   | 'cancellationCompensation';
-export function isDevelopmentPreview(
-  development: boolean,
-  flag: string | undefined,
-) {
-  return development && flag === 'true';
-}
 export function capabilityGate(enabled: ReadonlySet<string>) {
   return (capability: CustomerCapability) => {
     if (!enabled.has(capability)) throw new ApiError(0, 'backendPending');

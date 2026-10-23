@@ -11,7 +11,7 @@ import { serviceabilityState } from '../features/collection/serviceabilityState'
 import { SessionStore, type Principal } from '../session/store';
 import { productAdmission } from '../session/admission';
 import { ApiError } from '../api/errors';
-import { isDevelopmentPreview, capabilityGate } from '../api/capabilities';
+import { capabilityGate } from '../api/capabilities';
 import { trustedMediaUrl } from '../features/media/model';
 import { refundLabels } from '../features/collection/financial';
 import { PushLifecycle } from '../notifications/lifecycle';
@@ -90,9 +90,7 @@ test('logout and account switching ignore a late principal and clear the previou
   expect(session.getSnapshot().principal).toBeNull();
   expect(session.accessToken()).toBeNull();
 });
-test('release ignores preview flag and unavailable proposed capability never starts a network request', () => {
-  expect(isDevelopmentPreview(false, 'true')).toBe(false);
-  expect(isDevelopmentPreview(true, 'true')).toBe(true);
+test('unavailable proposed capability never starts a network request', () => {
   expect(() => capabilityGate(new Set())('catalogue')).toThrow(ApiError);
 });
 test('distance warning is local, optional and bound to address version and pin', () => {

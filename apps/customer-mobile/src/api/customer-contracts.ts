@@ -55,17 +55,6 @@ export interface RecommendationDto {
     reason: 'PREVIOUS_COLLECTION';
   }[];
 }
-export interface SlotsDto {
-  serviceability_context_id: string;
-  expires_at: string;
-  slots: {
-    slot_id: string;
-    start: string;
-    end: string;
-    label: string;
-    availability: 'AVAILABLE' | 'FULL';
-  }[];
-}
 export type CollectionStatus =
   | 'PENDING_PAYMENT'
   | 'ACCEPTED'
@@ -171,6 +160,9 @@ export interface CollectionDetail extends CollectionSummary {
     display_name: string;
     declared_quantity: number | null;
     declared_weight_grams: number | null;
+    weight_band?: import('./weight-contracts').WeightBand | null;
+    weight_kg?: string | null;
+    declared_volume_ml?: number | null;
     quoted_line_amount_minor: number;
     image: MediaDto | null;
   }[];

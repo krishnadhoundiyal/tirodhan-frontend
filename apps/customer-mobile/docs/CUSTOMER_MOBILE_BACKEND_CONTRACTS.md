@@ -1,5 +1,15 @@
 # Customer Mobile backend contracts
 
+> Current: [WEIGHT_VOLUME_BOOKING_REPORT.md](WEIGHT_VOLUME_BOOKING_REPORT.md), verified
+> against backend `b281e03a` on 22 October 2026. It supersedes historical weight,
+> volume, pricing and restart-recovery assumptions below with the implemented
+> policy/quote/items/confirmed_quote/bound_request_id contracts.
+
+> 21 October 2026: [PROJECTED_BOOKING_REPORT.md](PROJECTED_BOOKING_REPORT.md)
+> supersedes the historical V1 slot and booking-preparation sections below with
+> verified V2 projected availability/atomic holds at backend `c1e2e7c`. Physical
+> mass/volume approval and identifier-only restart recovery limits are explicit.
+
 Canonical handoff · reverified 2026-10-09 against backend remote main `afa140012db29ec0e83c25f3ff378765a7fe7b88`. Read-only route/model inspection and complete commit comparisons confirm unchanged application API/domain contracts from review revision `4994089a0bd5f7317bba1ab49cdfb8d4cec0241a` and the prior verification. Local backend checkout C:\Users\91956\Tirodhan\tirodhan remains unchanged at `302c272d902b0adedb2cbf5b0a965f23c3f07673`; no fetch, checkout or backend write was performed. Sources: src/tirodhan/api/routes/{auth,addresses,serviceability,collection_requests,payments}.py; dependencies; customer, collection, payment/refund services and relevant ADRs. Examples are invented nonproduction data. PROPOSED does not mean currently implemented.
 
 ## Activation and status

@@ -72,6 +72,11 @@ function DetailContent({
             {item.declared_weight_grams !== null && (
               <Body>Declared weight: {item.declared_weight_grams} g</Body>
             )}
+            {item.declared_volume_ml != null && (
+              <Body>
+                Declared occupied volume: {item.declared_volume_ml / 1000} L
+              </Body>
+            )}
             <Body>
               {moneyLabel(item.quoted_line_amount_minor, detail.quote.currency)}
             </Body>

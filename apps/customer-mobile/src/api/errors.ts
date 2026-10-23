@@ -25,8 +25,25 @@ export const safeErrorCodes = [
   'VERSION_CONFLICT',
   'NOT_ELIGIBLE',
   'CURSOR_EXPIRED',
+  'WEIGHT_POLICY_CHANGED_REVIEW_DECLARATIONS',
+  'QUOTE_CONFIRMATION_STALE_OR_MISMATCHED',
+  'ITEM_VOLUME_DECLARATIONS_REQUIRED',
+  'NUMERICAL_WEIGHT_MUST_EXCEED_T',
+  'WEIGHT_BAND_REQUIRED',
+  'DECLARED_WEIGHT_MISMATCH',
+  'AGGREGATE_WEIGHT_OUT_OF_RANGE',
+  'AGGREGATE_VOLUME_OUT_OF_RANGE',
 ] as const;
 export type SafeErrorCode = (typeof safeErrorCodes)[number];
+// Writes may have committed before any of these responses reached the client.
+export function ambiguousCommand(error: unknown) {
+  return (
+    !(error instanceof ApiError) ||
+    ['network', 'timeout', 'protocol', 'cancelled'].includes(error.kind) ||
+    error.status >= 500 ||
+    error.status === 408
+  );
+}
 export function isExpiredCursor(error: unknown) {
   return (
     error instanceof ApiError &&
@@ -35,6 +52,32 @@ export function isExpiredCursor(error: unknown) {
   );
 }
 export function safeErrorCode(body: unknown): SafeErrorCode | undefined {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const detail = body.detail;
+    // Current weight endpoints expose controlled codes in detail; exact allowlist only.
+    const code =
+      typeof detail === 'string'
+        ? detail
+        : detail && typeof detail === 'object' && 'code' in detail
+          ? detail.code
+          : undefined;
+    const legacyString =
+      typeof detail === 'string' &&
+      [
+        'PLANNING_CUTOFF_REACHED',
+        'PLANNING_STARTED',
+        'SERVICEABILITY_EXPIRED',
+        'SERVICEABILITY_UNSERVICEABLE',
+        'SLOT_UNAVAILABLE',
+        'VERSION_CONFLICT',
+        'NOT_ELIGIBLE',
+        'CURSOR_EXPIRED',
+      ].includes(detail);
+    const known = legacyString
+      ? undefined
+      : safeErrorCodes.find((value) => value === code);
+    if (known) return known;
+  }
   if (!body || typeof body !== 'object' || !('error' in body)) return undefined;
   const error = body.error;
   if (!error || typeof error !== 'object' || !('code' in error))
@@ -44,6 +87,13 @@ export function safeErrorCode(body: unknown): SafeErrorCode | undefined {
 export function userMessage(error: unknown): string {
   if (!(error instanceof ApiError))
     return 'Something went wrong. Please try again.';
+  if (
+    error.code === 'WEIGHT_POLICY_CHANGED_REVIEW_DECLARATIONS' ||
+    error.code === 'QUOTE_CONFIRMATION_STALE_OR_MISMATCHED'
+  )
+    return 'Pricing has changed. Review the current weight bands and pickup price again.';
+  if (error.code === 'ITEM_VOLUME_DECLARATIONS_REQUIRED')
+    return 'Enter the occupied volume for every selected item.';
   if (error.kind === 'backendPending')
     return 'This feature is waiting for Tirodhan’s service connection. Please try again later.';
   if (error.kind === 'preview')

@@ -1,5 +1,17 @@
 # Backend completion handoff
 
+> Current: [WEIGHT_VOLUME_BOOKING_REPORT.md](WEIGHT_VOLUME_BOOKING_REPORT.md).
+> Backend `b281e03a` supplies weight pricing, item volumes and bound_request_id.
+> Their frontend integration is implemented; the historical physical-input and
+> missing-binding blockers below no longer apply to new native workflows.
+
+> 21 October 2026: historical slot findings below are superseded by
+> [PROJECTED_BOOKING_REPORT.md](PROJECTED_BOOKING_REPORT.md), verified against backend
+> `main` at `c1e2e7c`. V2 projections/holds and reservation binding exist and have
+> frontend adapters. Live submission is blocked on approval of physical mass/volume
+> inputs. Identifier-only restart reconciliation also requires an owned
+> command-result/bound-booking lookup; the report describes the precise limits.
+
 The canonical specification is [CUSTOMER_MOBILE_BACKEND_CONTRACTS.md](CUSTOMER_MOBILE_BACKEND_CONTRACTS.md). Backend verification is read-only against remote main `afa140012db29ec0e83c25f3ff378765a7fe7b88`. Review SHA `4994089a0bd5f7317bba1ab49cdfb8d4cec0241a` and earlier verification have identical application API/domain sources. Local `C:\Users\91956\Tirodhan\tirodhan` remains at `302c272d902b0adedb2cbf5b0a965f23c3f07673`; no backend files or Git state were changed.
 
 | Required capability                                          | Contract section                                                                                                                                                                                                      | Current frontend behavior                                                                                                          |

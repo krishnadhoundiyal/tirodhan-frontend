@@ -10,6 +10,7 @@ import type {
   ServiceabilityInput,
 } from './contracts';
 import type { Transport } from './transport';
+import { parseHold, validateHoldInput, type HoldSlot } from './slot-contracts';
 export function createApi(transport: Transport) {
   return {
     startOtp: (body: { client_request_id: string; phone: string }) =>
@@ -57,6 +58,26 @@ export function createApi(transport: Transport) {
         method: 'POST',
         body,
       }),
+    holdSlot: (body: HoldSlot) => {
+      validateHoldInput(body);
+      const id = body.client_command_id;
+      const command = transport.command<unknown>('/v2/customer/slot-holds', {
+        method: 'POST',
+        body,
+      });
+      return {
+        execute: async (signal?: AbortSignal) =>
+          parseHold(await command.execute(signal), id),
+      };
+    },
+    readHold: async (id: string, signal?: AbortSignal) =>
+      parseHold(
+        await transport.request<unknown>(
+          `/v2/customer/slot-holds/${encodeURIComponent(id)}`,
+          { signal },
+        ),
+        id,
+      ),
     cancelCollection: (id: string) =>
       transport.command<CollectionResponse>(
         `/v1/collection-requests/${encodeURIComponent(id)}/cancel`,

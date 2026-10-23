@@ -43,7 +43,9 @@ export class SessionStore {
     private readonly refreshRequest: (
       credential: string,
     ) => Promise<AccessTokenResponse>,
-    private readonly onClear: () => void,
+    private readonly onClear: (
+      reason?: 'accountChange' | 'refreshFailure' | 'sessionEnded',
+    ) => void,
     private readonly principalReader?: PrincipalReader,
   ) {}
   getSnapshot = () => this.snapshot;
@@ -54,13 +56,15 @@ export class SessionStore {
     };
   };
   accessToken = () => this.token;
+  commandOwner = () =>
+    `${this.snapshot.userId ?? 'signed-out'}:${this.snapshot.ownerVersion}`;
   private publish(next: SessionSnapshot) {
     this.snapshot = next;
     this.listeners.forEach((listener) => listener());
   }
   private apply(result: AccessTokenResponse) {
     const sameUser = this.snapshot.userId === result.user_id;
-    if (this.snapshot.userId && !sameUser) this.onClear();
+    if (this.snapshot.userId && !sameUser) this.onClear('accountChange');
     this.token = result.access_token;
     this.expiresAt = Date.now() + result.expires_in * 1000;
     this.publish({
@@ -163,8 +167,13 @@ export class SessionStore {
         if (generation !== this.generation) return;
         this.apply(result);
         await this.loadPrincipal();
-      } catch {
-        if (generation === this.generation) await this.clear();
+      } catch (error) {
+        if (generation === this.generation)
+          await this.clear(
+            error instanceof ApiError && error.status === 401
+              ? 'sessionEnded'
+              : 'refreshFailure',
+          );
         throw new Error('Session renewal failed');
       } finally {
         this.flight = null;
@@ -175,7 +184,9 @@ export class SessionStore {
   async renewIfExpired() {
     if (this.token && Date.now() >= this.expiresAt) await this.refresh();
   }
-  clear = async () => {
+  clear = async (
+    reason: 'refreshFailure' | 'sessionEnded' = 'sessionEnded',
+  ) => {
     ++this.generation;
     this.principalAbort?.abort();
     this.principalFlight = null;
@@ -189,7 +200,7 @@ export class SessionStore {
       principalError: null,
       ownerVersion: this.snapshot.ownerVersion + 1,
     });
-    this.onClear();
+    this.onClear(reason);
     const removal = this.secureWrite
       .catch(() => {})
       .then(() => this.secure.remove());

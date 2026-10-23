@@ -7,7 +7,11 @@ import { useFonts } from 'expo-font';
 import { QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { queryClient, session } from '../src/lib/runtime';
+import { queryClient, previewCatalogue } from '../src/lib/runtime';
+import {
+  navigationSession as session,
+  navigationOwner,
+} from '../src/lib/navigation';
 import { installNotifications } from '../src/notifications/integration';
 import { DraftProvider } from '../src/features/collection/DraftProvider';
 import SplashScreen from '../src/features/auth/SplashScreen';
@@ -81,7 +85,7 @@ export default function RootLayout() {
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
           <DraftProvider
-            key={`${snapshot.userId ?? 'signed-out'}:${snapshot.ownerVersion}`}
+            key={`${navigationOwner(snapshot)}:${snapshot.ownerVersion}`}
           >
             <StatusBar style="dark" />
             <Stack
@@ -90,6 +94,18 @@ export default function RootLayout() {
                 contentStyle: { backgroundColor: colors.cream },
               }}
             />
+            {previewCatalogue && (
+              <Body
+                style={{
+                  backgroundColor: '#F3E7D5',
+                  textAlign: 'center',
+                  fontSize: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                Preview Mode · Local fixtures · No real transactions
+              </Body>
+            )}
           </DraftProvider>
         </QueryClientProvider>
       </KeyboardProvider>

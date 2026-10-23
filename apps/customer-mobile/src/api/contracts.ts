@@ -46,13 +46,18 @@ export interface CollectionItemInput {
   item_category_code: string;
   declared_quantity?: number | null;
   declared_weight_grams?: number | null;
+  weight_band?: import('./weight-contracts').WeightBand | null;
+  weight_kg?: string | null;
+  declared_volume_ml?: number | null;
 }
 export interface CollectionCreate {
   client_request_id: string;
   serviceability_context_id: string;
+  capacity_reservation_id?: string | null;
   slot_start: string;
   slot_end: string;
   items: CollectionItemInput[];
+  confirmed_quote?: import('./weight-contracts').QuoteConfirmation | null;
 }
 export interface CollectionItem {
   request_item_id: string;
@@ -62,6 +67,9 @@ export interface CollectionItem {
   quoted_line_amount_minor: number;
   currency: string;
   pricing_rule_version: string | null;
+  weight_band?: import('./weight-contracts').WeightBand | null;
+  weight_kg?: string | null;
+  declared_volume_ml?: number | null;
 }
 export interface CollectionResponse {
   request_id: string;
