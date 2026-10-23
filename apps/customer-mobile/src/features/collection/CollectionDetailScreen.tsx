@@ -118,6 +118,17 @@ function DetailContent({
       >
         <Body>{detail.slot.label}</Body>
         <Body>{detail.address.text}</Body>
+        {detail.payment.status !== 'SUCCEEDED' &&
+          (detail.payment.verification_pending ||
+            ['PENDING', 'PROCESSING', 'CONFIRMING'].includes(
+              detail.payment.status,
+            )) && (
+            <Body>
+              Payment has not been confirmed. An existing checkout may remain
+              payable after cancellation. Any confirmed payment and eligible
+              refund will be shown separately.
+            </Body>
+          )}
         <Body>
           {detail.cancellation.refund_expectation === 'FULL_PAYMENT'
             ? `You have paid ${moneyLabel(detail.payment.amount_minor, detail.payment.currency)}. Tirodhan will initiate any required refund after cancellation. Refund completion is tracked separately.`

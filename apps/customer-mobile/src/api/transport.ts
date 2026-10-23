@@ -49,7 +49,10 @@ export class Transport {
         ? undefined
         : (JSON.parse(JSON.stringify(options.body)) as unknown);
     const headers = { ...options.headers };
-    if (requiresLegacyHeader(options.method ?? 'GET', path))
+    if (
+      requiresLegacyHeader(options.method ?? 'GET', path) &&
+      !headers['Idempotency-Key']
+    )
       headers['Idempotency-Key'] = this.uuid();
     return {
       execute: (signal) => {

@@ -91,10 +91,10 @@ export function createHttpRepositories(
     detail: customer.detail,
     payment: customer.payment,
     checkout: customer.checkout,
-    paymentAttempt: (id) => {
+    paymentAttempt: (id, commandKey) => {
       requireCapability('payment');
       requireCapability('checkout');
-      return existing.paymentAttempt(id);
+      return existing.paymentAttempt(id, commandKey);
     },
     refunds: customer.refunds,
     slots: customer.slots,

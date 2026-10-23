@@ -1,177 +1,247 @@
-# CM-P0-05: Native Razorpay checkout compatibility assessment
+# CM-P0-05: Payment implementation and native validation
 
-Assessment date: 2026-10-23 (Asia/Calcutta).
+Updated 2026-10-23 (Asia/Calcutta). Branch: `codex/customer-native-razorpay`.
+The original assessment commit `640afe4eb31881cf3ea6040156ba9f0c7443f4e1` remains
+in this branch's ancestry, along with dependency correction `e32a074` and the
+projected-slot, weight/volume, quotation and booking-recovery implementation.
 
-## Delivery status
+## Current delivery status
 
-**Blocked before SDK integration. The checkout acceptance target is not met.**
-This increment records the exact blockers under the brief's instruction to
-document SDK incompatibility rather than fabricate a working checkout. No native
-checkout, revised payment coordinator, new financial UI, or new recovery behavior
-has been implemented. The existing `nativeCheckout` remains `null` and cannot
-launch a provider. Existing payment-flow tests are baseline regression checks,
-not acceptance evidence for CM-P0-05.
+The frontend DTOs, payment coordinator, secure preparation recovery, native
+adapter boundary, and FinancialSection integration are implemented and tested
+with mocked native/backend ports. This is implementation work, not just the
+prior compatibility assessment.
 
-The implementation branch is `codex/customer-native-razorpay`, created from
-`codex/customer-weight-volume-booking` at
-`e32a074038b883ff6aef6dd30ca2304237a7bcfd`. The workspace and working tree were
-verified before branching. Frontend main was not used. Projected slots,
-weight/volume declarations, dynamic quotations, booking recovery, SCREEN_PREVIEW,
-and the Expo SDK 57 dependency correction are unchanged. Backend access was
-read-only. No push, PR creation, merge, or deployment is part of this delivery.
+**The official SDK is not installed or connected yet.**
+`lib/repositories.ts` still supplies `nativeCheckout = null` until the inherited
+pnpm release-age restriction expires. Consequently the current application
+cannot launch real Razorpay checkout. Native compilation and real device/bank
+application testing have not passed and are not implied by JavaScript tests or
+Hermes exports. The complete native checkout acceptance target remains pending.
 
-## Dependency policy blocks installation
+There was no push, merge, deployment, backend change, production credential
+creation, or paid build request. Dependency/security policies and Expo/RN
+versions have not been changed.
 
-The published official `react-native-razorpay` version is `3.0.0`, published
-2026-04-21T06:52:03.293Z. Its npm `gitHead` and Git tag `v3.0.0` both resolve to
-`48f9e09eff8390d5e5523fb175a72fac68dc97ee`. The candidate itself is older than
-pnpm's minimum release age.
+## Implemented frontend behavior
 
-Both commands below were attempted with the existing pnpm 11.25.0 and strict
-release-age enforcement:
+- `customer-contracts.ts` and `contracts.ts` include the backend payment action,
+  reason, verification flag and readiness timestamp fields. `payment-contracts.ts`
+  validates runtime responses, preserves only known financial DTO fields, and
+  treats unknown actions/reasons as unavailable. Verified SUCCEEDED needs its
+  backend timestamp. The SDK cannot set any financial status.
+- `customer-client.ts` validates owned detail/payment projections and checkout
+  handoffs. `client.ts` accepts an explicitly retained preparation key; transport
+  preserves it through request reconstruction and token-refresh replay. No body,
+  gateway verification endpoint, client quotation, or provider signature POST
+  has been invented.
+- A request/owner-generation scoped coordinator serializes Pay taps and refreshes.
+  START/RESUME preparation responses require the original verified Order and a
+  fresh checkout GET. WAIT never opens the SDK, but a new explicit customer
+  inquiry may prepare again with the retained key. UNAVAILABLE does not open
+  checkout. Automatic verification performs GETs only.
+- The coordinator checks request, payment and attempt identities, frozen money,
+  INR currency, provider, public key format, merchant display name, original Order,
+  booking expiry and checkout readiness. It checks ownership/foreground/expiry
+  again immediately before native opening, including after lazy SDK loading.
+  Actual merchant-account binding remains enforced by the owned backend handoff;
+  its private account fingerprint is neither invented nor stored by the client.
+- A preparation key is durable before HTTP submission. Native recovery uses the
+  existing chunked SecureStore mechanism with `WHEN_UNLOCKED_THIS_DEVICE_ONLY`.
+  Records contain owner, request ID, key, attempt ID and original Order ID; they
+  do not contain checkout permission, provider errors, credentials, signatures,
+  addresses or instruments. Ambiguous responses and restart reuse the same key.
+  Involuntary auth loss retains it; explicit logout/account switch clears it.
+- Failed instruments and SDK dismissal never allocate another Order. The only
+  new-key exception is positive backend proof of a rejected, never-exposed first
+  creation: RAZORPAY_ORDER_REJECTED + FAILED + no Order + START/NEW_PAYMENT.
+  That proof permits a fresh command only on the next explicit customer tap.
+  It is not inferred from a timeout, SDK error, callback absence or an empty GET.
+- SDK success, error and dismissal are equivalent reconciliation signals. Raw
+  provider results are discarded. Both payment projection and owned detail are
+  refreshed after return, timeout, preparation/handoff failure, focus and resume.
+  A timeout leaves payment uncertain and keeps another native opening blocked
+  while the old native screen might still own SDK listeners.
+- Verification uses bounded exponential backoff with jitter: 2, 4, 8 and then
+  15-second base delays, +/-20%, inside a default 180000 ms window. The public
+  `EXPO_PUBLIC_PAYMENT_VERIFICATION_WINDOW_MS` setting accepts 1000..180000 ms.
+  The budget uses a monotonic clock, so wall-clock adjustments cannot extend it.
+  Blur/background aborts current verification and stops timers. Return makes one
+  refresh and uses the remaining budget; it does not restart automatic checkout.
+  Manual refresh can start another finite verification window. No background
+  verification job or indefinite payment interval was added.
+- FinancialSection supplies processing, awaiting-confirmation, received,
+  unavailable and backend-permitted retry states inside the existing detail
+  screen. Owner-generation guards protect asynchronous cache publication and
+  invalidation. Cancellation/refunds remain independent; uncertain cancellation
+  copy explains that an existing Order may still be paid. Late capture cannot
+  restore a cancelled booking in the client.
+- SCREEN_PREVIEW, Expo Go and web cannot use an injected native checkout port.
+  Their payment coordinator has no secure recovery port, including on successful
+  fixture/status reads. Tests verify zero native calls/preparation/storage access
+  in these modes. The new `razorpayAdapter.ts` boundary also checks its supplied
+  runtime guard before loading, rechecks after loading, enforces process-wide
+  SDK listener ownership, and forwards only backend checkout fields.
+
+## Authoritative backend reference
+
+Backend main inspected at `b281e03a47d202fd8b5c3d895075aa358062c5fa`:
+
+- [Preparation contract](https://github.com/krishnadhoundiyal/tirodhan/blob/b281e03a47d202fd8b5c3d895075aa358062c5fa/docs/PAYMENT_PREPARATION_API.md)
+- `src/tirodhan/api/routes/payments.py`
+- `src/tirodhan/api/routes/checkout.py`
+- `src/tirodhan/modules/payments/preparation.py`
+- Customer financial schemas, projections and finance repository.
+
+The three financial routes used are the existing preparation POST, owned
+attempt checkout GET, and owned booking payment GET. Booking detail is refreshed
+separately. Backend configuration must include matching merchant account/key,
+readiness lifetime, provider verification, webhook processing and reconciliation.
+The existing `principal`, `collections`, `payment` and `checkout` capabilities and
+HTTPS backend URL must be configured for integrated nonproduction acceptance.
+Only the backend checkout GET supplies the public Razorpay key.
+
+## SDK installation and minimal patch follow-up
+
+The selected official package is `react-native-razorpay@3.0.0`, published
+2026-04-21T06:52:03.293Z. npm gitHead and tag v3.0.0 both resolve to
+`48f9e09eff8390d5e5523fb175a72fac68dc97ee`. It declares codegen and New Architecture
+support; that is not a successful build on this exact stack.
+
+Strict installation and lockfile-only attempts in the original assessment both
+failed on inherited `expo-notifications@57.0.24`, published
+2026-10-22T13:31:41.874Z. Its one-day cutoff expires on **October 23 at
+19:01:41.874 IST**. No age exclusion, alternate package manager or manually
+assembled lockfile was used. Expo remains 57.0.31; React Native remains 0.86.3;
+pnpm remains 11.25.0. Dependency manifests/lockfile are unchanged in this frontend
+phase.
+
+After that cutoff, verify time and install with the same policy enforced:
 
 ```powershell
 pnpm --filter @tirodhan/customer-mobile add react-native-razorpay@3.0.0 --config.minimum-release-age-strict=true
-pnpm --filter @tirodhan/customer-mobile add react-native-razorpay@3.0.0 --lockfile-only --config.minimum-release-age-strict=true
+pnpm install --frozen-lockfile --config.minimum-release-age-strict=true
 ```
 
-Both exited 1 with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` for the inherited
-`expo-notifications@57.0.24` lockfile entry, published
-2026-10-22T13:31:41.874Z. Its one-day cutoff expires at
-**2026-10-23T13:31:41.874Z (19:01:41.874 IST)**. Expiry is a prerequisite for
-retrying installation, not a promise that native builds will then pass.
+Then connect the official SDK through a lazy native loader and the implemented
+adapter, preserving module availability/mode/capability guards before preparation.
+Web must use a loader stub; Expo Go/SCREEN_PREVIEW must never evaluate the native
+SDK module. Rerun runtime isolation tests with the installed SDK as well.
 
-Neither attempt changed package.json, pnpm-lock.yaml, or pnpm-workspace.yaml.
-No exclusion, relaxed policy, alternate package manager, manually assembled
-lockfile, or package installation outside the workspace was used to evade this
-failure. Expo remains 57.0.31 and React Native remains 0.86.3.
+The release's [Android Gradle file](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/android/build.gradle)
+has no namespace, while its manifest declares `package="com.razorpay.rn"`.
+RN 0.86.3 selects AGP 8.12.0; [AGP 8 requires a module namespace](https://developer.android.com/build/releases/agp-8-0-0-release-notes#namespace-dsl).
+This remains a source-level compatibility concern, **not an observed compiler
+failure**. Confirm the installed release still has that gap, and if required use
+`pnpm patch react-native-razorpay@3.0.0 --edit-dir .local/razorpay-3.0.0-patch`,
+change only the editable copy, and record it with `pnpm patch-commit`. Limit the first patch to
+the documented namespace/manifest migration; add further compatibility changes
+only when supported by actual compilation errors. Compile the patched SDK and retain the actual build log. Do not edit node_modules or
+change Expo/RN/architecture merely to fit the SDK.
 
-## Native compatibility finding
+## Android development build investigation
 
-The official release provides codegen and New Architecture sources. Its
-`package.json` declares React Native `>=0.66.0`; its JavaScript loader checks
-bridgeless/TurboModule indicators. These are source-level compatibility evidence,
-not proof of compatibility with this application's exact native toolchain.
+EAS CLI 25.3.0 authenticated to the existing `tirodhan` account. Read-only
+`account:usage tirodhan --non-interactive --json` showed the Free plan, 0/15 Android
+builds used and 0/30 total builds used for the current period. Recheck those limits
+before every future build; do not incur paid overages or upgrade a plan.
 
-The released Android `android/build.gradle` contains no `namespace` declaration;
-the Android manifest instead declares `package="com.razorpay.rn"`. The installed
-React Native 0.86.3 Gradle version catalogue specifies Android Gradle Plugin
-8.12.0. Android's AGP 8 migration documentation requires a namespace in the
-module build script rather than the manifest. Consequently the unmodified SDK
-has an Android configuration incompatibility to resolve and compile-test before
-claiming native support. A namespace-only fix would still need verification of
-codegen, compilation, event delivery, and actual checkout lifecycle behavior.
-No build failure is claimed as observed: compilation could not be run here.
+An isolated, ignored pnpm CLI tool installation was used after pnpm dlx hit a
+module-resolution error. Its optional dtrace-provider/protobufjs install scripts
+remain blocked. Application dependencies and policies were not modified for the
+CLI. No account credentials or billing details are committed.
 
-References audited at the published release revision:
+`eas.json` now adds `checkout-development`, extending the existing development
+profile. Existing development/preview/production profiles are preserved. Official
+EAS schema validation confirmed internal development-client, Node 24.19.0, pnpm
+11.25.0, NONPROD mode, medium Android worker, `:app:assembleDebug` and
+`withoutCredentials: true`. This uses debug signing, not production credentials.
+See [EAS configuration](https://docs.expo.dev/eas/json/) and
+[Android development APKs](https://docs.expo.dev/build-reference/apk/).
 
-- [Razorpay package and codegen configuration](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/package.json)
-- [Android Gradle configuration](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/android/build.gradle)
-- [Android manifest](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/android/src/main/AndroidManifest.xml)
-- [Native JavaScript loader](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/RazorpayCheckout.js)
-- [iOS podspec](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/react-native-razorpay.podspec)
-- [Official Expo prebuild instructions](https://github.com/razorpay/react-native-razorpay/blob/48f9e09eff8390d5e5523fb175a72fac68dc97ee/README.md)
-- [Android: AGP 8 namespace requirement](https://developer.android.com/build/releases/agp-8-0-0-release-notes#namespace-dsl)
+The actual read-only `eas project:info` result was:
 
-## Authoritative backend contract reviewed
+```text
+EAS project not configured. This command cannot configure it in non-interactive mode.
+```
 
-Backend main resolved to `b281e03a47d202fd8b5c3d895075aa358062c5fa`.
-The assessment read `docs/PAYMENT_PREPARATION_API.md`, the payment and checkout
-routes, customer financial schemas/projections, and payment action derivation.
+Automatic approval review rejected `eas init --account tirodhan` before execution:
+EAS investigation did not explicitly authorize cloud project creation or app
+linkage changes. A concrete approval request is pending for
+`@tirodhan/tirodhan-customer`, recording owner/project ID, source upload and free
+Android development builds. No project was created/linked and no source uploaded.
+That authorization must be resolved before those cloud actions; do not bypass the
+rejection with another tool or an indirect API call.
 
-- POST `/v1/payments/collection-requests/{request_id}/attempts` requires the
-  retained Idempotency-Key. Responses include `action`, `action_reason`, and
-  nullable `checkout_ready_until`. Exact commands retain attempt identity;
-  eligible fresh commands converge on the original exposed Order.
-- START and RESUME permit a fresh checkout GET after preparation. WAIT never
-  permits checkout, but allows another explicit, serialized preparation inquiry
-  with the retained key. UNAVAILABLE never permits checkout. Unknown actions or
-  reasons must fail closed.
-- GET `/v1/customer/payment-attempts/{attempt_id}/checkout` is the sole handoff
-  source. Validate request/attempt/provider/Order identities, public key, merchant
-  display name, positive safe-integer INR amount, booking expiry, and the separate
-  readiness deadline immediately before native launch. Do not manufacture or
-  persist reusable checkout authorization from a previous GET.
-- Payment GET and embedded detail now include `action`, `action_reason`,
-  `verification_pending`, and `checkout_ready_until`, in addition to
-  `retry_allowed`. The frontend DTOs/coordinator still need updating to these
-  fields when implementation resumes; the existing stub is not sufficient.
-- After any provider callback, timeout, dismissal, foreground return, focus,
-  or restart, refresh both owned booking detail and payment projection. Only
-  backend SUCCEEDED is payment success. Automatic verification needs a bounded,
-  jittered foreground window, one refresh flight, and manual refresh after the
-  window. No automatic SDK reopening or new Order on ambiguous results.
-- Retained preparation commands need owner-scoped secure restart storage;
-  in-flight work and cache publication must be invalidated on account change or
-  logout. Cancellation and refunds remain independent, including late capture
-  after cancellation. No provider error payloads should be logged.
+Once SDK installation, project authorization and linkage are complete:
 
-[Authoritative backend preparation contract](https://github.com/krishnadhoundiyal/tirodhan/blob/b281e03a47d202fd8b5c3d895075aa358062c5fa/docs/PAYMENT_PREPARATION_API.md).
+```powershell
+# Run from apps/customer-mobile with the existing authenticated EAS CLI.
+# Confirm the Free account/remaining Android allowance again first.
+eas build --platform android --profile checkout-development --non-interactive
+```
 
-## Development-build requirements and remaining work
+Do not use auto-submit, production profiles or production signing credentials.
+Capture the actual Gradle log and SDK error, apply the smallest reproducible patch
+if needed, and rebuild. An EAS build is source upload/compilation, not deployment.
+A local alternative needs JDK 17 and the Expo/RN-selected Android SDK/NDK; this
+host currently has no configured native toolchain. iOS native compilation needs
+macOS/Xcode/CocoaPods. JS/Hermes export is not either native compilation.
 
-1. After the release-age cutoff, retry strict pnpm installation without changing
-   SDK 57/RN 0.86 or adding policy exclusions. Regenerate and verify the lockfile.
-2. Resolve the released Android namespace issue through a reviewed upstream fix
-   or a reproducible package patch, then test it with this exact native stack.
-   Review the release's iOS codegen/pod integration as well.
-3. Complete DTO parsing, retained command storage, serialized coordinator,
-   foreground verification, lazy official SDK adapter, and FinancialSection UX.
-   Test all four actions, same-Order retries, callbacks, ambiguous responses,
-   restart, duplicate taps, cancellation, and account isolation with mocks.
-4. Use Node >=22.13.0 (the existing validation runtime is Node 24.19.0), pnpm
-   11.25.0, and the project's existing Expo development-build approach. On a
-   configured Android machine, use JDK 17, Android SDK/NDK versions selected by
-   Expo/RN, an emulator or attached device, and then:
+For device acceptance, install the development APK, start the existing Metro
+`start` script with NONPROD/backend capabilities configured, and use an owned
+eligible test booking backed by server-side test merchant configuration. Test
+SDK opening, callback delay, bank-app return, dismissal, instrument failure,
+restart and account isolation. Expo Go cannot validate this native SDK. No real
+merchant or device acceptance has been performed here.
 
-   ```powershell
-   pnpm install --frozen-lockfile
-   pnpm --filter @tirodhan/customer-mobile exec expo prebuild --platform android
-   pnpm --filter @tirodhan/customer-mobile android --device
-   pnpm --filter @tirodhan/customer-mobile start
-   ```
+## Validation results for the frontend phase
 
-5. For iOS use macOS, supported Xcode, CocoaPods, an iOS simulator/device and
-   appropriate signing. Prebuild for iOS and run the existing `ios` script.
-   Add the official release's documented UPI query schemes to Expo configuration
-   if enabling those instruments; verify return-from-bank behavior on devices.
-6. Configure the HTTPS nonproduction backend and existing `principal`,
-   `collections`, `payment`, and `checkout` capabilities. Backend merchant keys,
-   matching merchant account identity, readiness lifetime (1..60 seconds),
-   webhook processing and reconciliation workers must be configured there.
-   Public checkout keys come only from the checkout GET. Never put a merchant
-   secret in Expo configuration or an EXPO_PUBLIC variable.
-7. Keep native loading behind Android/iOS development-build and capability
-   guards. SCREEN_PREVIEW, Expo Go and web must never import/invoke the SDK.
-   Rebuild the native client after adding the package; Metro reload and Expo Go
-   cannot add native modules. Test with backend/provider test-mode configuration
-   before any live acceptance.
+| Validation                                            | Result                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------ |
+| TypeScript                                            | Passed                                                             |
+| ESLint                                                | Passed, zero warnings                                              |
+| Formatting                                            | Passed with Windows line-ending adaptation                         |
+| Jest                                                  | 279 tests, 23 suites passed; no skips or force-exit                |
+| Expo Doctor                                           | 21/21 passed on retry; first remote schema check had TLS failure   |
+| Android/iOS Hermes and web exports                    | Passed: Android/iOS Hermes and web bundles                         |
+| EAS build-profile schema                              | Passed using official EAS JSON schema                              |
+| Official Razorpay SDK installation                    | Deferred until inherited release-age cutoff                        |
+| Android native compilation                            | Not run; SDK installation and EAS project approval/linkage pending |
+| iOS native compilation                                | Not run; no macOS toolchain                                        |
+| Real device / bank application / live backend payment | Not tested                                                         |
 
-This Windows host has no discoverable `java`, `adb`, `sdkmanager`, `gradle`, or
-`xcodebuild`, no configured JAVA_HOME/ANDROID_HOME/ANDROID_SDK_ROOT, and no Android
-SDK or Android Studio at the standard inspected paths. Xcode/iOS compilation
-requires macOS. No native compilation, device checkout, bank-app return, or
-merchant acceptance has been performed. JS/Hermes exports are not native builds.
+VirtualizedList act warnings were observed during the full suite; the run exited normally. Local checks use pnpm-generated launchers directly because pnpm run currently
+tries the inherited age-blocked reinstall. Jest uses an ignored local transform
+cache. Exports use ignored local output/temp directories. No force-exit, test
+skips, Expo Doctor exclusions, CI weakening or dependency-policy bypass was used.
+The report in commit 640afe4 records the initial assessment; this document now
+records implemented frontend work and explicitly outstanding native validation.
 
-## Validation of the preserved baseline
+## Changed files
 
-The following checks were rerun on this branch with Node 24.19.0. pnpm's generated
-`.cmd` launchers were used directly for local checks because `pnpm run` attempts
-an automatic reinstall that encounters the inherited release-age gate. No
-repository, CI, validation, or package policy setting was changed.
-
-| Check                                         | Result                                                                   |
-| --------------------------------------------- | ------------------------------------------------------------------------ |
-| TypeScript (`tsc --noEmit`)                   | Passed                                                                   |
-| ESLint (`eslint . --max-warnings 0`)          | Passed                                                                   |
-| Prettier (`--check . --end-of-line auto`)     | Passed; Windows line-ending adaptation                                   |
-| Jest (`--runInBand`)                          | 223 tests, 20 suites passed                                              |
-| Expo Doctor (`pnpm dlx expo-doctor`)          | 21/21 passed on retry; first run failed the remote schema TLS connection |
-| Android/iOS/web exports                       | Passed; Android/iOS Hermes bundles and web assets emitted                |
-| SDK installation and lockfile-only resolution | Both blocked by inherited notifications release age                      |
-| Native compilation/device checkout            | Not run; toolchain unavailable, SDK compatibility not established        |
-
-These are preserved-baseline regression results. They do not establish CM-P0-05
-native acceptance. Jest uses an ignored workspace-local transform cache;
-exports use ignored workspace-local output/temp paths. No live backend,
-Razorpay merchant, or payment instrument was exercised.
+- apps/customer-mobile/docs/NATIVE_RAZORPAY_CHECKOUT_REPORT.md
+- apps/customer-mobile/eas.json
+- apps/customer-mobile/src/api/client.ts
+- apps/customer-mobile/src/api/contracts.ts
+- apps/customer-mobile/src/api/customer-client.ts
+- apps/customer-mobile/src/api/customer-contracts.ts
+- apps/customer-mobile/src/api/payment-contracts.ts
+- apps/customer-mobile/src/api/transport.ts
+- apps/customer-mobile/src/features/collection/CollectionDetailScreen.tsx
+- apps/customer-mobile/src/features/collection/developmentRepositories.ts
+- apps/customer-mobile/src/features/collection/FinancialSection.tsx
+- apps/customer-mobile/src/features/collection/paymentFlow.ts
+- apps/customer-mobile/src/features/collection/paymentRecovery.ts
+- apps/customer-mobile/src/features/collection/razorpayAdapter.ts
+- apps/customer-mobile/src/features/collection/repository.ts
+- apps/customer-mobile/src/lib/runtime.ts
+- apps/customer-mobile/src/session/paymentRecovery.ts
+- apps/customer-mobile/src/test/contracts.test.ts
+- apps/customer-mobile/src/test/financial-section.test.tsx
+- apps/customer-mobile/src/test/payment-flow.test.ts
+- apps/customer-mobile/src/test/payment-recovery.test.ts
+- apps/customer-mobile/src/test/product-screens.test.tsx
+- apps/customer-mobile/src/test/razorpay-adapter.test.ts
+- apps/customer-mobile/src/test/setup.ts
+- apps/customer-mobile/src/test/transport-completion.test.ts

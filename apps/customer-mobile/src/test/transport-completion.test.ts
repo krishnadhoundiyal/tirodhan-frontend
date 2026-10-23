@@ -117,6 +117,28 @@ test('customer pending gates make no HTTP calls; enabled adapters encode identit
   expect(() => pending.catalogue()).toThrow();
   expect(fetcher).not.toHaveBeenCalled();
   const api = createCustomerApi(transport, () => {});
+  fetcher
+    .mockResolvedValueOnce(ok({ items: [], next_cursor: null }))
+    .mockResolvedValueOnce(
+      ok({
+        request_id: 'id/secret',
+        payment: {
+          request_id: 'id/secret',
+          payment_id: 'payment',
+          amount_minor: 35000,
+          currency: 'INR',
+          status: 'PENDING',
+          retry_allowed: true,
+          action: 'START',
+          action_reason: 'NEW_PAYMENT',
+          verification_pending: false,
+          checkout_ready_until: null,
+          expires_at: new Date(Date.now() + 300000).toISOString(),
+          succeeded_at: null,
+          current_attempt: null,
+        },
+      }),
+    );
   await api.collections('history', 'cursor/+');
   await api.detail('id/secret');
   expect(fetcher.mock.calls[0]![0]).toBe(
