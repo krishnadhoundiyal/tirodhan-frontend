@@ -88,4 +88,7 @@ export interface PaymentAttempt {
   provider_order_id: string | null;
   provider_payment_id: string | null;
   failure_code: string | null;
+  action: import('./customer-contracts').PaymentAction;
+  action_reason: import('./customer-contracts').PaymentActionReason;
+  checkout_ready_until: string | null;
 }

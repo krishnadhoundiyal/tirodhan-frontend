@@ -11,6 +11,7 @@ import type {
 } from './contracts';
 import type { Transport } from './transport';
 import { parseHold, validateHoldInput, type HoldSlot } from './slot-contracts';
+import { parsePaymentAttempt } from './payment-contracts';
 export function createApi(transport: Transport) {
   return {
     startOtp: (body: { client_request_id: string; phone: string }) =>
@@ -83,10 +84,18 @@ export function createApi(transport: Transport) {
         `/v1/collection-requests/${encodeURIComponent(id)}/cancel`,
         { method: 'POST' },
       ),
-    paymentAttempt: (id: string) =>
-      transport.command<PaymentAttempt>(
+    paymentAttempt: (id: string, commandKey?: string) => {
+      const command = transport.command<PaymentAttempt>(
         `/v1/payments/collection-requests/${encodeURIComponent(id)}/attempts`,
-        { method: 'POST' },
-      ),
+        {
+          method: 'POST',
+          ...(commandKey ? { headers: { 'Idempotency-Key': commandKey } } : {}),
+        },
+      );
+      return {
+        execute: async (signal?: AbortSignal) =>
+          parsePaymentAttempt(await command.execute(signal)),
+      };
+    },
   };
 }

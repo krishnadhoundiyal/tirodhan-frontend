@@ -1,4 +1,4 @@
-// PROPOSED customer-facing projections. These are not current backend response fields.
+// Customer projections; payment fields follow PAYMENT_PREPARATION_API.md.
 export interface Page<T> {
   items: T[];
   next_cursor: string | null;
@@ -101,7 +101,20 @@ export interface CheckoutParameters extends Money {
   provider_order_id: string;
   merchant_display_name: string;
   expires_at: string;
+  checkout_ready_until: string;
 }
+export type PaymentAction = 'START' | 'RESUME' | 'WAIT' | 'UNAVAILABLE';
+export type PaymentActionReason =
+  | 'NEW_PAYMENT'
+  | 'CHECKOUT_READY'
+  | 'VERIFICATION_REQUIRED'
+  | 'PREPARATION_IN_PROGRESS'
+  | 'RECONCILIATION_REQUIRED'
+  | 'BOOKING_INELIGIBLE'
+  | 'ACCOUNT_MISMATCH'
+  | 'PAYMENT_RECEIVED'
+  | 'SUPERSEDED_ATTEMPT'
+  | 'UNKNOWN';
 export interface PaymentRead extends Money {
   payment_id: string;
   request_id: string;
@@ -114,6 +127,10 @@ export interface PaymentRead extends Money {
     | 'CANCELLED'
     | 'EXPIRED';
   retry_allowed: boolean;
+  action: PaymentAction;
+  action_reason: PaymentActionReason;
+  verification_pending: boolean;
+  checkout_ready_until: string | null;
   expires_at: string | null;
   succeeded_at: string | null;
   current_attempt: {

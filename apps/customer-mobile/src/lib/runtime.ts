@@ -20,6 +20,8 @@ import {
 } from '../preview/isolation';
 import { previewNavigation } from '../preview/navigation';
 import { bookingRecovery } from '../session/bookingRecovery';
+import { paymentRecovery } from '../session/paymentRecovery';
+import { clearPaymentFlows } from '../features/collection/paymentFlow';
 
 const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 const modeGlobal = globalThis as typeof globalThis & {
@@ -82,8 +84,11 @@ export const session = new SessionStore(
   (reason) => {
     // Involuntary authentication loss retains owner-scoped commands for re-login.
     // Explicit logout clears them below, after invalidating the session owner.
-    if (reason === 'accountChange')
+    clearPaymentFlows();
+    if (reason === 'accountChange') {
       void bookingRecovery.clear().catch(() => {});
+      void paymentRecovery.clear().catch(() => {});
+    }
     void queryClient.cancelQueries();
     queryClient.clear();
     notificationCredential.clear();
@@ -131,6 +136,7 @@ export const pushLifecycle = new PushLifecycle(
 );
 export async function logout() {
   if (previewCatalogue) {
+    clearPaymentFlows();
     await queryClient.cancelQueries();
     queryClient.clear();
     notificationCredential.clear();
@@ -152,7 +158,7 @@ export async function logout() {
     try {
       await session.clear();
     } finally {
-      await bookingRecovery.clear();
+      await Promise.all([bookingRecovery.clear(), paymentRecovery.clear()]);
     }
   }
 }

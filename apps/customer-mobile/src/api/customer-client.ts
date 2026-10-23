@@ -21,6 +21,8 @@ import type {
 } from './customer-contracts';
 import { parseAvailability, type ContextSlots } from './slot-contracts';
 import { parsePolicy, parseQuote, type QuoteInput } from './weight-contracts';
+import { parseCheckout, parsePayment } from './payment-contracts';
+import { ApiError } from './errors';
 
 export function createCustomerApi(
   transport: Transport,
@@ -92,29 +94,38 @@ export function createCustomerApi(
         cursor(`/v1/customer/collection-requests?view=${view}&limit=20`, next),
         signal,
       ),
-    detail: (id: string, signal?: AbortSignal) =>
-      read<CollectionDetail>(
+    detail: async (id: string, signal?: AbortSignal) => {
+      const detail = await read<CollectionDetail>(
         'collections',
         `/v1/customer/collection-requests/${encodeURIComponent(id)}`,
         signal,
-      ),
+      );
+      if (!detail || detail.request_id !== id)
+        throw new ApiError(200, 'protocol');
+      return { ...detail, payment: parsePayment(detail.payment, id) };
+    },
     recommendations: (signal?: AbortSignal) =>
       read<RecommendationDto>(
         'recommendations',
         '/v1/customer/recommendations/collection-categories',
         signal,
       ),
-    payment: (id: string, signal?: AbortSignal) =>
-      read<PaymentRead>(
-        'payment',
-        `/v1/customer/collection-requests/${encodeURIComponent(id)}/payment`,
-        signal,
+    payment: async (id: string, signal?: AbortSignal) =>
+      parsePayment(
+        await read<PaymentRead>(
+          'payment',
+          `/v1/customer/collection-requests/${encodeURIComponent(id)}/payment`,
+          signal,
+        ),
+        id,
       ),
-    checkout: (id: string, signal?: AbortSignal) =>
-      read<CheckoutParameters>(
-        'checkout',
-        `/v1/customer/payment-attempts/${encodeURIComponent(id)}/checkout`,
-        signal,
+    checkout: async (id: string, signal?: AbortSignal) =>
+      parseCheckout(
+        await read<CheckoutParameters>(
+          'checkout',
+          `/v1/customer/payment-attempts/${encodeURIComponent(id)}/checkout`,
+          signal,
+        ),
       ),
     refunds: (id: string, signal?: AbortSignal) =>
       read<{ refunds: RefundRead[] }>(

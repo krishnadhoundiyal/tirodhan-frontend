@@ -140,6 +140,9 @@ test('payment initiation has no invented body, webhook call, or captured state',
     provider_order_id: 'order',
     provider_payment_id: null,
     failure_code: null,
+    action: 'START',
+    action_reason: 'CHECKOUT_READY',
+    checkout_ready_until: '2026-10-23T13:00:00Z',
   };
   fetcher.mockResolvedValue(ok(attempt, 201));
   expect(await api.paymentAttempt('request').execute()).toEqual(attempt);
@@ -175,4 +178,27 @@ test('transport cancels stale requests', async () => {
   const call = transport.request('/protected', { signal: controller.signal });
   controller.abort();
   await expect(call).rejects.toMatchObject({ kind: 'cancelled' });
+});
+
+test('payment recovery supplies the exact persisted Idempotency-Key across prepared-command reconstruction', async () => {
+  const { api, fetcher, uuid } = setup();
+  const attempt = {
+    payment_attempt_id: 'attempt',
+    status: 'PENDING',
+    provider: 'RAZORPAY',
+    provider_order_id: 'order_original',
+    provider_payment_id: null,
+    failure_code: null,
+    action: 'RESUME',
+    action_reason: 'CHECKOUT_READY',
+    checkout_ready_until: new Date(Date.now() + 60000).toISOString(),
+  };
+  fetcher.mockResolvedValue(ok(attempt, 201));
+  await api.paymentAttempt('request', 'persisted-command-key').execute();
+  await api.paymentAttempt('request', 'persisted-command-key').execute();
+  expect(
+    fetcher.mock.calls.map((c) => c[1].headers['Idempotency-Key']),
+  ).toEqual(['persisted-command-key', 'persisted-command-key']);
+  expect(fetcher.mock.calls.every((c) => c[1].body === undefined)).toBe(true);
+  expect(uuid).not.toHaveBeenCalled();
 });

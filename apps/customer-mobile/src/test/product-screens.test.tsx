@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import {
   QueryClient,
   QueryClientProvider,
@@ -34,6 +35,10 @@ let mockRequestId = '11111111-1111-4111-8111-111111111111';
 let mockCompensationEnabled = true;
 jest.setTimeout(20000);
 jest.mock('expo-router', () => ({
+  useFocusEffect: (callback: () => void) =>
+    jest
+      .requireActual<typeof import('react')>('react')
+      .useEffect(callback, [callback]),
   router: {
     push: jest.fn(),
     back: jest.fn(),
@@ -95,6 +100,13 @@ function Seed({ far = false }: { far?: boolean }) {
   );
 }
 let client: QueryClient;
+const initialAppState = AppState.currentState;
+beforeEach(() => {
+  AppState.currentState = 'active';
+});
+afterEach(() => {
+  AppState.currentState = initialAppState;
+});
 async function show(element: React.ReactNode, seed = false, far = false) {
   client = new QueryClient({
     defaultOptions: {
@@ -130,6 +142,9 @@ beforeEach(() => {
   repositories.reset();
   jest.restoreAllMocks();
   jest.clearAllMocks();
+  jest
+    .spyOn(AppState, 'addEventListener')
+    .mockReturnValue({ remove: jest.fn() });
   mockRequestId = '11111111-1111-4111-8111-111111111111';
   mockCompensationEnabled = true;
 });
@@ -689,16 +704,24 @@ test.each([true, false])(
   },
 );
 
-test('detail seeds financial queries without initial reads; payment and refund refresh remain independent', async () => {
+test('focus refreshes owned payment/detail; manual payment and refund refresh remain independent', async () => {
   mockRequestId = '66666666-6666-4666-8666-666666666660';
   const snapshot = await repositories.detail(mockRequestId);
   const payment = jest.spyOn(repositories, 'payment');
   const refunds = jest.spyOn(repositories, 'refunds');
   await show(<CollectionDetailScreen />);
   await screen.findByText('Refund initiated');
-  expect(payment).not.toHaveBeenCalled();
+  await waitFor(() => expect(payment).toHaveBeenCalledTimes(1));
   expect(refunds).not.toHaveBeenCalled();
-  payment.mockResolvedValue({ ...snapshot.payment, status: 'CONFIRMING' });
+  payment.mockResolvedValue({
+    ...snapshot.payment,
+    status: 'CONFIRMING',
+    action: 'WAIT',
+    action_reason: 'VERIFICATION_REQUIRED',
+    verification_pending: true,
+    retry_allowed: false,
+    checkout_ready_until: null,
+  });
   await fireEvent.press(
     screen.getByRole('button', { name: 'Refresh payment status' }),
   );
@@ -714,7 +737,7 @@ test('detail seeds financial queries without initial reads; payment and refund r
     screen.getByRole('button', { name: 'Refresh refund status' }),
   );
   await screen.findByText('Refund completed');
-  expect(payment).toHaveBeenCalledTimes(1);
+  expect(payment).toHaveBeenCalledTimes(2);
   expect(refunds).toHaveBeenCalledTimes(1);
   expect((await repositories.detail(mockRequestId)).refunds[0]?.status).toBe(
     'INITIATED',

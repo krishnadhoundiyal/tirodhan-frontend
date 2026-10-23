@@ -88,6 +88,15 @@ export function createDevelopmentRepositories(): CustomerRepositories {
             ? 'EXPIRED'
             : 'SUCCEEDED',
       retry_allowed: status === 'PENDING_PAYMENT',
+      action: status === 'PENDING_PAYMENT' ? 'START' : 'UNAVAILABLE',
+      action_reason:
+        status === 'PENDING_PAYMENT'
+          ? 'NEW_PAYMENT'
+          : status === 'EXPIRED'
+            ? 'BOOKING_INELIGIBLE'
+            : 'PAYMENT_RECEIVED',
+      verification_pending: false,
+      checkout_ready_until: null,
       expires_at: status === 'PENDING_PAYMENT' ? future(0.25) : null,
       succeeded_at:
         status === 'PENDING_PAYMENT' || status === 'EXPIRED'
