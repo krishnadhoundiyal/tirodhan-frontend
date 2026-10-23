@@ -17,7 +17,13 @@ import { createOperations, type Operations } from '../features/operations';
 import { fixtureOwner } from '../features/fixtures';
 import { fixtures, queryClient, session, auth } from '../runtime';
 import type { SessionSnapshot } from '../session/store';
+import {
+  createExecutionService,
+  type ExecutionService,
+} from '../features/execution/service';
+import { memoryJournal } from '../features/execution/journal';
 let mockOperations: Operations;
+let mockExecution: ExecutionService;
 let mockState: SessionSnapshot;
 const mockPush = jest.fn();
 jest.mock('expo-router', () => {
@@ -47,6 +53,7 @@ jest.mock('../runtime', () => {
     }),
     fixtures: createFixtureRepository(),
     operationsForSession: () => mockOperations,
+    executionForSession: () => mockExecution,
     session: {
       getSnapshot: () => mockState,
       subscribe: () => () => {},
@@ -76,6 +83,18 @@ beforeEach(() => {
     current: () => true,
     onForbidden: async () => {},
   });
+  let commandId = 0;
+  mockExecution = createExecutionService(
+    fixtures.execution,
+    memoryJournal(),
+    queryClient,
+    mockOperations,
+    {
+      owner: fixtureOwner,
+      current: () => true,
+      uuid: () => `demo-ui-command-${++commandId}`,
+    },
+  );
   Object.defineProperty(AppState, 'currentState', {
     configurable: true,
     value: 'active',
@@ -209,4 +228,109 @@ test('OTP UI calls the auth flow without passing codes through navigation', asyn
   await waitFor(() => expect(auth.verify).toHaveBeenCalledWith('123456'));
   expect(session.getSnapshot().status).toBe('signedOut');
   expect(mockPush).not.toHaveBeenCalled();
+});
+async function pressReady(title: string) {
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: title }).props.accessibilityState
+        .disabled,
+    ).toBe(false),
+  );
+  await fireEvent.press(screen.getByRole('button', { name: title }));
+}
+async function confirmAction(title: string) {
+  await pressReady(title);
+  await pressReady('Confirm and submit');
+  await screen.findByText('Backend command receipt');
+}
+async function closeReceipt() {
+  await pressReady('Review complete · continue');
+  await waitFor(() =>
+    expect(screen.queryByText('Backend command receipt')).toBeNull(),
+  );
+}
+test('V1 execution UI starts assignment and records unsuccessful attempt separately from incident', async () => {
+  fixtures.setScenario('execution-v1');
+  await mount(<Assignment />);
+  await confirmAction('Start assignment');
+  await closeReceipt();
+  await confirmAction('Record unsuccessful attempt');
+  expect(
+    screen.getByText(/Backend recorded attempt: NOT_COLLECTED/),
+  ).toBeTruthy();
+  await closeReceipt();
+  await confirmAction('Report incident: CUSTOMER_UNAVAILABLE');
+  expect(screen.getByText(/Incident recorded: OPEN/)).toBeTruthy();
+  expect(screen.queryByText('No active assignment')).toBeNull();
+});
+test('V2 execution UI uses ordered route commands and gates discharge/evidence instead of legacy fallback', async () => {
+  fixtures.setScenario('execution-v2');
+  await mount(<Assignment />);
+  await confirmAction('Confirm receipt of this route');
+  await closeReceipt();
+  expect(screen.queryByRole('button', { name: 'Start assignment' })).toBeNull();
+  await pressReady('Depart for next pickup');
+  expect(screen.getByText(/Request departure before setting out/)).toBeTruthy();
+  await pressReady('Confirm and submit');
+  await screen.findByText('Backend command receipt');
+  await closeReceipt();
+  await confirmAction('Start next pickup at location');
+  await closeReceipt();
+  await confirmAction('Confirm collected route pickup');
+  await closeReceipt();
+  await screen.findByText(/Discharge requires cargo\/receiving-point scans/);
+  expect(
+    screen.queryByRole('button', { name: 'Confirm collected route pickup' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Record unsuccessful attempt' }),
+  ).toBeNull();
+});
+test('V2 vehicle issue displays recovery and never presents new pickup completion', async () => {
+  fixtures.setScenario('execution-v2');
+  await mount(<Assignment />);
+  await confirmAction('Report vehicle issue: SAFETY');
+  await closeReceipt();
+  await screen.findByText(/Route recovery required/);
+  expect(
+    screen.queryByRole('button', { name: 'Start next pickup at location' }),
+  ).toBeNull();
+});
+test('secure recovery loading can be retried explicitly without submitting an operation', async () => {
+  fixtures.setScenario('execution-v1');
+  jest
+    .spyOn(mockExecution, 'load')
+    .mockRejectedValueOnce(new Error('storage unavailable'));
+  await mount(<Assignment />);
+  await pressReady('Retry recovery loading');
+  await pressReady('Start assignment');
+  expect(
+    screen.getByRole('button', { name: 'Confirm and submit' }),
+  ).toBeTruthy();
+  expect(await mockExecution.load()).toBeNull();
+});
+test('manual operational refresh does not cancel an in-flight secure recovery read', async () => {
+  fixtures.setScenario('execution-v1');
+  let release!: (value: null) => void;
+  const pending = new Promise<null>((done) => {
+    release = done;
+  });
+  jest.spyOn(mockExecution, 'load').mockReturnValueOnce(pending);
+  let refreshed!: () => void;
+  const completed = new Promise<void>((done) => {
+    refreshed = done;
+  });
+  const refresh = mockOperations.refresh;
+  jest.spyOn(mockOperations, 'refresh').mockImplementation(async () => {
+    await refresh();
+    refreshed();
+  });
+  await mount(<Assignment />);
+  await pressReady('Refresh assignment and route');
+  await completed;
+  release(null);
+  await pressReady('Start assignment');
+  expect(
+    screen.getByRole('button', { name: 'Confirm and submit' }),
+  ).toBeTruthy();
 });
