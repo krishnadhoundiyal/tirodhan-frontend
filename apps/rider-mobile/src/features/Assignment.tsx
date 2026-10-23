@@ -146,8 +146,8 @@ export default function AssignmentScreen() {
       )}
       <Muted>
         Order is supplied by the service. Planned windows are not live arrival
-        estimates. Evidence capture, media upload and handover remain part of
-        RM-P0-03.
+        estimates. Use Evidence for private pickup capture, media upload and
+        receiving-point handover.
       </Muted>
       <Button
         title="Refresh assignment and route"

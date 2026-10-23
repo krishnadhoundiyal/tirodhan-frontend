@@ -96,6 +96,10 @@ export function createExecutionService(
   client: QueryClient,
   operations: Operations,
   scope: { owner: string; current(): boolean; uuid(): string },
+  onReceipt: (
+    command: Command,
+    receipt: import('./contracts').Receipt,
+  ) => Promise<unknown> = async () => {},
 ) {
   let flight: Promise<RecordState | null> | null = null;
   const key = [
@@ -144,19 +148,24 @@ export function createExecutionService(
     return operation;
   };
   const submit = async (command: Command) => {
+    let confirmed = false;
     try {
       current();
       const receipt = await api.send(command, scope.owner);
       current();
-      return await journal.update(
+      const saved = await journal.update(
         scope.owner,
         command,
         { status: 'confirmed', receipt, rejection: null },
         current,
       );
+      confirmed = true;
+      await onReceipt(command, receipt);
+      return saved;
     } catch (error) {
       current();
       if (
+        !confirmed &&
         error instanceof ApiError &&
         error.kind === 'http' &&
         [404, 409, 422].includes(error.status)
@@ -174,7 +183,12 @@ export function createExecutionService(
   };
   return {
     key,
-    load,
+    load: async () => {
+      const record = await load();
+      if (record?.status === 'confirmed' && record.receipt)
+        await onReceipt(record.command, record.receipt);
+      return record;
+    },
     run: (action: Action) =>
       single(async () => {
         current();
@@ -197,6 +211,9 @@ export function createExecutionService(
     dismiss: () =>
       single(async () => {
         await fresh();
+        const record = await load();
+        if (record?.status === 'confirmed' && record.receipt)
+          await onReceipt(record.command, record.receipt);
         await journal.dismiss(scope.owner, current);
         return null;
       }),

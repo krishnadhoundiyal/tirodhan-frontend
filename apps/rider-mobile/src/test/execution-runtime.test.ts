@@ -6,6 +6,59 @@ jest.mock('expo-crypto', () => {
 const previousMode = process.env.EXPO_PUBLIC_RIDER_MODE;
 const previousUrl = process.env.EXPO_PUBLIC_RIDER_API_BASE_URL;
 let runtime: typeof import('../runtime');
+
+test('preview collection receipt preserves evidence attribution before the completed assignment disappears', async () => {
+  process.env.EXPO_PUBLIC_RIDER_MODE = 'SCREEN_PREVIEW';
+  const fetcher = jest
+    .spyOn(globalThis, 'fetch')
+    .mockRejectedValue(new Error('No live calls expected'));
+  jest.isolateModules(() => {
+    runtime = jest.requireActual('../runtime');
+  });
+  await runtime.resetFixture('execution-v1');
+  const execution = runtime.executionForSession();
+  await execution.run({
+    assignmentId: 'demo-assignment',
+    source: 'RIDER_OFFER_ACCEPTED',
+    kind: 'V1_START',
+  });
+  await execution.dismiss();
+  await execution.run({
+    assignmentId: 'demo-assignment',
+    source: 'RIDER_OFFER_ACCEPTED',
+    kind: 'V1_ATTEMPT',
+    pickupId: 'demo-pickup',
+    outcome: 'COLLECTED',
+  });
+  await execution.dismiss();
+  expect(
+    (await runtime.fixtures.repository.assignment()).assignment,
+  ).toBeNull();
+  const evidence = runtime.evidenceForSession();
+  expect((await evidence.load()).work[0]).toMatchObject({
+    pickupId: 'demo-pickup',
+    mode: 'V1',
+  });
+  const capturedAt = new Date().toISOString();
+  const local = await runtime
+    .evidenceVault()
+    .seal('fixture', 'PHOTO', capturedAt, () => {});
+  const state = await evidence.begin(
+    {
+      kind: 'HANDOVER',
+      id: 'fixture-handover',
+      pickupId: 'demo-pickup',
+      pointId: 'demo-receiving',
+      location: { latitude: 0, longitude: 0 },
+    },
+    local,
+  );
+  expect(state.operation?.stage).toBe('FINALIZED');
+  await runtime.logout();
+  expect(SecureStore.getItemAsync).not.toHaveBeenCalled();
+  expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   jest.clearAllMocks();
   jest.doMock('expo-secure-store', () => SecureStore);
