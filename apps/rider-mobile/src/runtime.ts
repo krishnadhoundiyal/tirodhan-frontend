@@ -22,6 +22,17 @@ import {
 } from './features/execution/service';
 import { nativeExecutionJournal } from './session/execution';
 import { memoryJournal } from './features/execution/journal';
+import { createEvidenceApi } from './api/evidence-client';
+import {
+  createEvidenceService,
+  type EvidenceService,
+} from './features/evidence/service';
+import { nativeEvidenceStore } from './session/evidence';
+import { memoryEvidenceStore } from './features/evidence/store';
+import { nativeVault } from './features/evidence/vault';
+import { createBlobUploader } from './features/evidence/upload';
+import { createFieldFixtures } from './features/evidence/fixtures';
+import type { AssignmentEnvelope, Route } from './api/contracts';
 export const mode = riderMode(__DEV__, process.env.EXPO_PUBLIC_RIDER_MODE);
 export const preview = mode === 'SCREEN_PREVIEW';
 export const nativeAuth = Platform.OS !== 'web';
@@ -57,10 +68,15 @@ const publicTransport = new Transport(
 export const authApi = createAuthApi(publicTransport);
 const scopes = new Map<string, Operations>();
 const executionScopes = new Map<string, ExecutionService>();
+const evidenceScopes = new Map<string, EvidenceService>();
 let fixtureGeneration = 0;
+let evidenceCleanup: Promise<unknown> = Promise.resolve();
 export const executionJournal = preview
   ? memoryJournal()
   : nativeExecutionJournal;
+export const evidenceStore = preview
+  ? memoryEvidenceStore()
+  : nativeEvidenceStore;
 export const session = new SessionStore(
   secureCredential,
   (credential) => authApi.refresh(credential),
@@ -69,6 +85,8 @@ export const session = new SessionStore(
     queryClient.clear();
     scopes.clear();
     executionScopes.clear();
+    for (const service of evidenceScopes.values()) service.suspend();
+    evidenceScopes.clear();
   },
   {
     read: async (signal) => {
@@ -87,14 +105,18 @@ const liveTransport = new Transport(
 );
 export const liveApi = createRiderApi(liveTransport);
 const liveExecutionApi = createExecutionApi(liveTransport);
+const liveEvidenceApi = createEvidenceApi(liveTransport);
 export const fixtures = createFixtureRepository();
+let fieldFixtures = createFieldFixtures(fixtures.fieldProgress);
 export const repository = repositoryForMode(mode, liveApi, fixtures.repository);
 export const auth = authFlow(authApi, session, randomUUID);
 let lastOwner: string | null = null;
 session.subscribe(() => {
   const owner = session.getSnapshot().userId;
-  if (owner && lastOwner && owner !== lastOwner)
+  if (owner && lastOwner && owner !== lastOwner) {
     void executionJournal.clear().catch(() => {});
+    void clearEvidence().catch(() => {});
+  }
   if (owner) lastOwner = owner;
 });
 export async function recheckSession() {
@@ -133,18 +155,20 @@ export async function logout() {
     scopes.clear();
     executionScopes.clear();
     await executionJournal.clear();
+    await clearEvidence();
     auth.clear();
     return;
   }
   const credential = secureCredential.get().catch(() => null);
   auth.clear();
   await session.clear(credential);
-  let journalClearFailed = false;
-  try {
-    await executionJournal.clear();
-  } catch {
-    journalClearFailed = true;
-  }
+  const cleanup = await Promise.allSettled([
+    executionJournal.clear(),
+    clearEvidence(),
+  ]);
+  const journalClearFailed = cleanup.some(
+    (result) => result.status === 'rejected',
+  );
   const value = await credential;
   try {
     if (value) await authApi.logout(value);
@@ -177,6 +201,29 @@ export function executionForSession() {
             session.getSnapshot().userId === owner &&
             riderAdmission(session.getSnapshot()) === 'admitted'),
       },
+      async (command) => {
+        if (Platform.OS === 'web' && !preview) return;
+        const service = evidenceForSession();
+        if (command.kind === 'V1_ATTEMPT' && command.outcome === 'COLLECTED')
+          await service.remember(command.pickupId, command.assignmentId, 'V1');
+        if (
+          command.kind === 'V2_TASK' &&
+          command.operation === 'PICKUP' &&
+          command.outcome === 'COLLECTED'
+        ) {
+          let route = queryClient.getQueryData<Route | null>(
+            operations.key('route'),
+          );
+          if (!route)
+            route = await queryClient.fetchQuery(operations.query('route'));
+          const pickupId = route?.tasks.find(
+            (t) => t.task_id === command.taskId,
+          )?.pickup_execution_id;
+          if (pickupId)
+            await service.remember(pickupId, command.assignmentId, 'V2');
+          else throw new ApiError(0, 'configuration');
+        }
+      },
     );
     executionScopes.set(key, service);
   }
@@ -191,4 +238,93 @@ export async function resetFixture(value: FixtureScenario) {
   void queryClient.cancelQueries();
   queryClient.clear();
   await executionJournal.clear();
+  await clearEvidence();
+  fieldFixtures = createFieldFixtures(fixtures.fieldProgress);
+}
+function clearEvidence() {
+  for (const service of evidenceScopes.values()) service.suspend();
+  evidenceScopes.clear();
+  evidenceCleanup = evidenceCleanup
+    .catch(() => {})
+    .then(async () => {
+      await evidenceStore.clear();
+      if (preview) await fieldFixtures.vault.sweep(null);
+      else if (Platform.OS !== 'web') await nativeVault.sweep(null);
+    });
+  return evidenceCleanup;
+}
+export function evidenceForSession() {
+  const state = session.getSnapshot(),
+    identity = session.requestIdentity(),
+    epoch = fixtureGeneration;
+  const owner = preview ? fixtureOwner : state.userId,
+    operations = operationsForSession();
+  if (!owner) throw new ApiError(403);
+  const key = [
+      'rider-field-evidence',
+      ...operations.key('assignment').slice(0, -1),
+    ],
+    name = JSON.stringify(key);
+  let service = evidenceScopes.get(name);
+  if (!service) {
+    const current = () =>
+      preview
+        ? fixtureGeneration === epoch
+        : session.requestIdentity() === identity &&
+          session.getSnapshot().userId === owner &&
+          riderAdmission(session.getSnapshot()) === 'admitted';
+    service = createEvidenceService(
+      preview ? fieldFixtures.api : liveEvidenceApi,
+      evidenceStore,
+      preview ? fieldFixtures.vault : nativeVault,
+      preview ? fieldFixtures.upload : createBlobUploader(),
+      {
+        owner,
+        current,
+        ready: () => evidenceCleanup,
+        uuid: randomUUID,
+        fresh: async () => {
+          await Promise.all(
+            (['assignment', 'route', 'availability'] as const).map((resource) =>
+              queryClient.cancelQueries({
+                queryKey: operations.key(resource),
+                exact: true,
+              }),
+            ),
+          );
+          const [assignment, route] = await Promise.all([
+            queryClient.fetchQuery(operations.query('assignment')),
+            queryClient.fetchQuery(operations.query('route')),
+            queryClient.fetchQuery(operations.query('availability')),
+          ]);
+          if (!current()) throw new ApiError(0, 'cancelled');
+          return {
+            assignment: (assignment as AssignmentEnvelope).assignment,
+            route,
+          };
+        },
+        executionPending: async () =>
+          !!(await executionJournal.load(owner, () => {
+            if (!current()) throw new ApiError(0, 'cancelled');
+          })),
+        refresh: async () => {
+          await operations.refresh();
+          if (current())
+            await queryClient.invalidateQueries({ queryKey: key, exact: true });
+        },
+      },
+    );
+    evidenceScopes.set(name, service);
+  }
+  return service;
+}
+export function evidenceVault() {
+  const vault = preview ? fieldFixtures.vault : nativeVault;
+  return {
+    ...vault,
+    seal: async (...args: Parameters<typeof vault.seal>) => {
+      await evidenceCleanup;
+      return vault.seal(...args);
+    },
+  };
 }

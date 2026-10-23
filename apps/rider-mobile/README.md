@@ -32,7 +32,7 @@ Release builds reject SCREEN_PREVIEW. Account provides labelled fixture scenario
 offers, active work, empty, expired, conflict and network failure.
 
 Navigation: sign-in/OTP and Rider admission -> Home/availability, Offers, Active
-Assignment/route, Account/logout. Direct operational routes enforce the same
+Assignment/route, Evidence/handover, Account/logout. Direct operational routes enforce the same
 principal admission gate. CUSTOMER/MANAGER alone cannot enter.
 
 ```powershell
@@ -59,10 +59,18 @@ fixtures; switching fixtures resets only the isolated development command store.
 
 V1 and V2 are selected from the actual assignment source and matching authoritative
 reads. V2 is never sent through V1 pickup endpoints. Fresh vehicle telemetry requires
-a shift ID not exposed by current Rider reads; V2 unsuccessful outcomes may require
-real evidence, and discharge needs scans/evidence/location. Those unsupported inputs
-are documented and gated, with no invented GPS, capture or route authority. See the
+a shift ID not exposed by current Rider reads. See the
 [execution authority and recovery report](../../docs/RIDER_PICKUP_EXECUTION_REPORT.md).
+
+RM-P0-03 adds private camera photo/muted video evidence, authorized receiving points,
+V1 handover and V2 discharge/failure flows, managed-label scanning, real foreground
+GPS, direct authorized Blob upload and server finalization. Explicit recovery keeps
+the original IDs and encrypted bytes; SCREEN_PREVIEW uses isolated fixtures and live
+Expo Go evidence requires a development binary. V2 DISCHARGE media remains blocked
+because the response omits its server-created capture ID. Shift discovery, actual
+approved labels and native/device acceptance remain prerequisites. No local upload
+or SDK event establishes request completion. See the
+[evidence and handover report](../../docs/RIDER_EVIDENCE_HANDOVER_REPORT.md).
 
 Native FCM assignment/route notifications are **not configured**. Refresh on focus,
 foreground return and explicit Refresh is a recovery mechanism, not a substitute

@@ -3,6 +3,7 @@ import type { Assignment, Availability, Offer, Route } from '../api/contracts';
 import { ApiError } from '../api/errors';
 import type { Command } from './execution/contracts';
 import { parseExecutionReceipt } from '../api/execution-client';
+import type { Command as FieldCommand } from './evidence/contracts';
 export const fixtureOwner = 'demo-rider';
 export type FixtureScenario =
   | 'offers'
@@ -34,6 +35,10 @@ export function createFixtureRepository(now = () => Date.now()) {
     departed = false,
     recovery = false;
   let attempts = 0;
+  let dischargeStarted = false,
+    dischargeDeparted = false,
+    discharged = false,
+    failed = false;
   const receipts = new Map<string, { fingerprint: string; value: unknown }>();
   const isExecution = () => scenario.startsWith('execution-');
   const isV2 = () =>
@@ -114,8 +119,13 @@ export function createFixtureRepository(now = () => Date.now()) {
         ...r.tasks[0]!,
         task_id: 'demo-discharge',
         kind: 'DISCHARGE',
-        state: 'PENDING',
-        committed_at: null,
+        state: discharged
+          ? 'COMPLETED'
+          : dischargeStarted
+            ? 'STARTED'
+            : 'PENDING',
+        committed_at:
+          dischargeDeparted || dischargeStarted ? timestamp(-1000) : null,
         receiving_point_id: 'demo-receiving',
       });
     return r;
@@ -126,7 +136,7 @@ export function createFixtureRepository(now = () => Date.now()) {
       return {
         ...availability,
         work_state: isExecution()
-          ? !isV2() && collected
+          ? discharged || failed || (!isV2() && collected)
             ? 'IDLE'
             : isV2() || started
               ? 'BUSY'
@@ -173,6 +183,8 @@ export function createFixtureRepository(now = () => Date.now()) {
       check();
       return {
         assignment:
+          !discharged &&
+          !failed &&
           (accepted || scenario === 'active' || isExecution()) &&
           !(scenario === 'execution-v1' && collected)
             ? assignment()
@@ -181,7 +193,7 @@ export function createFixtureRepository(now = () => Date.now()) {
     },
     route: async () => {
       check();
-      return scenario === 'execution-v1'
+      return scenario === 'execution-v1' || discharged || failed
         ? null
         : accepted || scenario === 'active' || isV2()
           ? currentRoute()
@@ -190,6 +202,17 @@ export function createFixtureRepository(now = () => Date.now()) {
   };
   return {
     repository,
+    fieldProgress(command: FieldCommand) {
+      check();
+      if (!isV2() || command.kind === 'HANDOVER' || command.kind === 'CAPTURE')
+        throw new ApiError(409);
+      if (command.kind === 'ROUTE') {
+        if (command.operation === 'START') dischargeStarted = true;
+        else dischargeDeparted = true;
+      }
+      if (command.kind === 'DISCHARGE') discharged = true;
+      if (command.kind === 'UNSUCCESSFUL') failed = true;
+    },
     setScenario(value: FixtureScenario) {
       scenario = value;
       accepted = false;
@@ -199,6 +222,10 @@ export function createFixtureRepository(now = () => Date.now()) {
       departed = false;
       recovery = false;
       attempts = 0;
+      dischargeStarted = false;
+      dischargeDeparted = false;
+      discharged = false;
+      failed = false;
       receipts.clear();
       availability = {
         rider_id: fixtureOwner,
