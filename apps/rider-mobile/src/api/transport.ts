@@ -1,4 +1,4 @@
-import { ApiError } from './errors';
+import { ApiError, executionCode, type ExecutionCode } from './errors';
 
 export interface SessionAccess {
   accessToken(): string | null;
@@ -74,6 +74,7 @@ export class Transport {
         controller.abort();
       }, this.timeoutMs);
       let response: Response;
+      let code: ExecutionCode | undefined;
 
       try {
         response = await this.fetcher(
@@ -96,17 +97,33 @@ export class Transport {
           },
         );
         assertOwner();
+        if (controller.signal.aborted)
+          throw new ApiError(0, timedOut ? 'timeout' : 'cancelled');
         // Read inside the timeout/cancellation scope; never retain raw backend error bodies.
         if (response.ok) {
           if (response.status === 204) return undefined as T;
           try {
             const result = (await response.json()) as T;
             assertOwner();
+            if (controller.signal.aborted)
+              throw new ApiError(0, timedOut ? 'timeout' : 'cancelled');
             return result;
           } catch (error) {
             if (error instanceof SyntaxError)
               throw new ApiError(response.status, 'protocol');
             throw error;
+          }
+        }
+        if (
+          response.headers?.get('content-type')?.includes('application/json')
+        ) {
+          try {
+            code = executionCode(await response.json());
+            assertOwner();
+            if (controller.signal.aborted)
+              throw new ApiError(0, timedOut ? 'timeout' : 'cancelled');
+          } catch (error) {
+            if (!(error instanceof SyntaxError)) throw error;
           }
         }
       } catch (error) {
@@ -142,7 +159,7 @@ export class Transport {
         if (!token) throw new ApiError(401);
         continue;
       }
-      throw new ApiError(response.status, 'http');
+      throw new ApiError(response.status, 'http', code);
     }
     throw new ApiError(401);
   }

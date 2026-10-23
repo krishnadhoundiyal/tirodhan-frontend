@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fixtures, logout, preview, queryClient } from '../runtime';
+import { fixtures, logout, preview, resetFixture } from '../runtime';
 import { useSession } from '../hooks';
 import { fixtureScenarios } from './fixtures';
 import { Body, Button, Card, ErrorState, Muted, Page } from '../ui';
@@ -27,10 +27,13 @@ export default function Account() {
             <Button
               key={value}
               title={`Fixture: ${value}`}
+              disabled={busy}
               onPress={() => {
-                fixtures.setScenario(value);
-                setScenario(value);
-                queryClient.clear();
+                setBusy(true);
+                void resetFixture(value)
+                  .then(() => setScenario(value))
+                  .catch(setError)
+                  .finally(() => setBusy(false));
               }}
             />
           ))}

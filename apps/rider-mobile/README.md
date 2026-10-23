@@ -50,6 +50,20 @@ Native build/release remains an explicit operator action after approved Rider
 project registration and signing setup; no Rider cloud project, signing credential,
 production bundle registration, deployment or release has been created.
 
+RM-P0-02 extends Active Assignment with assignment start, pickup outcome confirmation,
+incidents, ordered V2 route progression, route receipt and vehicle issues. Commands
+are sealed in Rider-specific SecureStore before submission and interrupted commands
+are recovered explicitly with the original ID/payload. No timeout is treated as
+pickup success. Account adds `execution-v1`, `execution-v2` and `execution-recovery`
+fixtures; switching fixtures resets only the isolated development command store.
+
+V1 and V2 are selected from the actual assignment source and matching authoritative
+reads. V2 is never sent through V1 pickup endpoints. Fresh vehicle telemetry requires
+a shift ID not exposed by current Rider reads; V2 unsuccessful outcomes may require
+real evidence, and discharge needs scans/evidence/location. Those unsupported inputs
+are documented and gated, with no invented GPS, capture or route authority. See the
+[execution authority and recovery report](../../docs/RIDER_PICKUP_EXECUTION_REPORT.md).
+
 Native FCM assignment/route notifications are **not configured**. Refresh on focus,
 foreground return and explicit Refresh is a recovery mechanism, not a substitute
 for asynchronous delivery. Do not send Expo push tokens or raw APNs tokens to the
