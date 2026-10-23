@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { randomUUID } from 'expo-crypto';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { ApiError } from './api/errors';
 import { Transport } from './api/transport';
 import { createAuthApi, createRiderApi } from './api/client';
@@ -33,6 +33,10 @@ import { nativeVault } from './features/evidence/vault';
 import { createBlobUploader } from './features/evidence/upload';
 import { createFieldFixtures } from './features/evidence/fixtures';
 import type { AssignmentEnvelope, Route } from './api/contracts';
+import { createPushApi } from './api/push-client';
+import { createPushLifecycle } from './notifications/lifecycle';
+import { nativeInstallation } from './notifications/installation';
+import { loadNativePush } from './notifications/native';
 export const mode = riderMode(__DEV__, process.env.EXPO_PUBLIC_RIDER_MODE);
 export const preview = mode === 'SCREEN_PREVIEW';
 export const nativeAuth = Platform.OS !== 'web';
@@ -106,12 +110,25 @@ const liveTransport = new Transport(
 export const liveApi = createRiderApi(liveTransport);
 const liveExecutionApi = createExecutionApi(liveTransport);
 const liveEvidenceApi = createEvidenceApi(liveTransport);
+const livePushApi = createPushApi(liveTransport);
+export const pushNotifications = createPushLifecycle({
+  context: () => ({
+    state: session.getSnapshot(),
+    identity: session.requestIdentity(),
+    api: livePushApi,
+    refresh: () => operationsForSession().refresh(),
+  }),
+  active: () => !preview && nativeAuth && AppState.currentState === 'active',
+  native: () => (preview ? null : loadNativePush()),
+  store: nativeInstallation,
+});
 export const fixtures = createFixtureRepository();
 let fieldFixtures = createFieldFixtures(fixtures.fieldProgress);
 export const repository = repositoryForMode(mode, liveApi, fixtures.repository);
 export const auth = authFlow(authApi, session, randomUUID);
 let lastOwner: string | null = null;
 session.subscribe(() => {
+  if (!preview && nativeAuth) pushNotifications.changed();
   const owner = session.getSnapshot().userId;
   if (owner && lastOwner && owner !== lastOwner) {
     void executionJournal.clear().catch(() => {});
@@ -122,6 +139,7 @@ session.subscribe(() => {
 export async function recheckSession() {
   await session.renewIfExpired();
   await session.loadPrincipal();
+  if (!preview && nativeAuth) await pushNotifications.foreground();
 }
 export function operationsForSession() {
   const state = session.getSnapshot();
@@ -158,6 +176,19 @@ export async function logout() {
     await clearEvidence();
     auth.clear();
     return;
+  }
+  // Revoke while the current Rider credential is still usable. A native operation
+  // can outlive this UI deadline; its serialized reset obligation gates the next owner.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pushNotifications.logout(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 15000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   const credential = secureCredential.get().catch(() => null);
   auth.clear();

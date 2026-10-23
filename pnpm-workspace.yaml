@@ -3,4 +3,7 @@ packages:
   - packages/*
 
 allowBuilds:
+  # Reviewed: neither transitive postinstall is needed by native messaging.
+  '@firebase/util': false
+  protobufjs: false
   unrs-resolver: true

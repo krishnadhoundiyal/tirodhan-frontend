@@ -72,8 +72,27 @@ approved labels and native/device acceptance remain prerequisites. No local uplo
 or SDK event establishes request completion. See the
 [evidence and handover report](../../docs/RIDER_EVIDENCE_HANDOVER_REPORT.md).
 
-Native FCM assignment/route notifications are **not configured**. Refresh on focus,
-foreground return and explicit Refresh is a recovery mechanism, not a substitute
-for asynchronous delivery. Do not send Expo push tokens or raw APNs tokens to the
-FCM registration API. See the [contract and validation report](../../docs/RIDER_MOBILE_FOUNDATION_REPORT.md)
-for endpoints, sensitive data rules and integration prerequisites.
+RM-P0-04 implements native FCM registration and refresh hints using aligned
+`@react-native-firebase/app` and `messaging` 26.4.0. Tokens are acquired only after
+RIDER admission and notification permission; both Android and iOS use the FCM token.
+The installation identity remains in Rider SecureStore. Rotation, foreground return,
+explicit retry and logout/account-switch invalidation use the existing backend APIs.
+Pushes never accept offers, execute tasks, reorder routes or establish completion.
+
+Firebase application configuration is currently absent. Obtain files for the
+existing approved Firebase Rider applications with package/bundle ID
+`com.tirodhan.rider`: `apps/rider-mobile/google-services.json` and
+`apps/rider-mobile/GoogleService-Info.plist`. Both are Git-ignored; never substitute
+service-account credentials. Each platform stays gated without its file. A new
+native development binary is required; Expo Go, web and SCREEN_PREVIEW do not load
+native messaging. Creating Firebase apps/projects or submitting cloud builds needs
+separate authorization. iOS also needs approved APNs capabilities/provisioning and
+an APNs key/certificate configured in the existing Firebase project. The APNs
+entitlement defaults to development; set `RIDER_APNS_ENVIRONMENT` to match the
+approved signing profile. No credentials or projects were created here.
+
+Foreground messages/taps refresh current owned state; background handling does no
+authenticated work, and foreground return recovers missed hints through fresh reads.
+Explicit Refresh remains available. Native compilation and real delivery still need
+acceptance testing. See the [native notifications report](../../docs/RIDER_NATIVE_NOTIFICATIONS_REPORT.md)
+and the [foundation contract report](../../docs/RIDER_MOBILE_FOUNDATION_REPORT.md).

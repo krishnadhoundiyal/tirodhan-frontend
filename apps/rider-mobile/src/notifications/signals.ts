@@ -18,8 +18,3 @@ export function riderSignal(data: unknown): 'offers' | 'route' | null {
     return 'route';
   return null;
 }
-export const pushRegistrationStatus = {
-  enabled: false,
-  message:
-    'Assignment notifications are not configured for this Rider build. Refresh on return or use Refresh. Operational notification acceptance is pending native FCM setup.',
-} as const;

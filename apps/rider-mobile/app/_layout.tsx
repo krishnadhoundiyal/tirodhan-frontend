@@ -16,6 +16,7 @@ import {
   queryClient,
   session,
   recheckSession,
+  pushNotifications,
 } from '../src/runtime';
 import { useSession } from '../src/hooks';
 export default function RootLayout() {
@@ -27,16 +28,25 @@ export default function RootLayout() {
     CormorantGaramond_600SemiBold,
   });
   useEffect(() => {
-    if (!preview && nativeAuth) void session.bootstrap();
+    if (!preview && nativeAuth && AppState.currentState === 'active')
+      void session
+        .bootstrap()
+        .then(() => pushNotifications.foreground())
+        .catch(() => {});
   }, []);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (status) => {
       if (
         status === 'active' &&
         !preview &&
-        session.getSnapshot().status === 'authenticated'
+        session.getSnapshot().status !== 'signedOut'
       )
-        void recheckSession().catch(() => {});
+        void (
+          session.getSnapshot().status === 'starting'
+            ? session.bootstrap().then(() => pushNotifications.foreground())
+            : recheckSession()
+        ).catch(() => {});
+      else if (status !== 'active') pushNotifications.suspend();
     });
     return () => subscription.remove();
   }, []);
