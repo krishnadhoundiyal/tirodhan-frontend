@@ -52,8 +52,8 @@ export default function Account() {
             }}
           />
           <Muted>
-            Local session data is cleared immediately. Server revocation needs a
-            network connection.
+            Notification cleanup may take a few seconds. Local sign-out
+            completes even when the service is unreachable.
           </Muted>
         </>
       )}

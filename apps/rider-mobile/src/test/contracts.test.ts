@@ -7,7 +7,7 @@ import {
   parseOffers,
 } from '../api/parse';
 import { createFixtureRepository } from '../features/fixtures';
-import { riderSignal, pushRegistrationStatus } from '../notifications/signals';
+import { riderSignal } from '../notifications/signals';
 const ok = (body: unknown) =>
   ({ ok: true, status: 200, json: async () => body }) as Response;
 test('Rider mutations use precise backend paths/body with no role/manager command/idempotency header', async () => {
@@ -159,5 +159,4 @@ test('FCM payloads are refresh hints, and registration is explicitly gated', () 
   expect(
     riderSignal({ type: 'ASSIGNMENT_OFFER', offer_id: 'invented' }),
   ).toBeNull();
-  expect(pushRegistrationStatus.enabled).toBe(false);
 });

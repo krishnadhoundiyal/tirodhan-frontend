@@ -161,6 +161,7 @@ test('real live composition seals command before submission and never uses fixtu
     token_type: 'bearer',
     expires_in: 60,
   });
+  expect(runtime.session.getSnapshot().principalError).toBeNull();
   const result = await runtime.executionForSession().run({
     assignmentId: 'live-assignment',
     source: 'MANAGER_ASSIGNED',

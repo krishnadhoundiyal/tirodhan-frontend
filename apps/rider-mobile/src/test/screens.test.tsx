@@ -45,6 +45,11 @@ jest.mock('../runtime', () => {
   return {
     preview: false,
     nativeAuth: true,
+    pushNotifications: {
+      subscribe: () => () => {},
+      getSnapshot: () => 'unavailable',
+      reconcile: jest.fn(),
+    },
     queryClient: new QueryClient({
       defaultOptions: {
         queries: { retry: false, gcTime: Infinity },

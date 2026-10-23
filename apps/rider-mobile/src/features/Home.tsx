@@ -11,7 +11,7 @@ import {
   Page,
   dateLabel,
 } from '../ui';
-import { pushRegistrationStatus } from '../notifications/signals';
+import NotificationCard from '../notifications/NotificationCard';
 export default function Home() {
   const { query, operations } = useRiderResource('availability');
   const router = useRouter();
@@ -68,10 +68,7 @@ export default function Home() {
         title="View active assignment"
         onPress={() => router.push('/(rider)/assignment')}
       />
-      <Card>
-        <Body>Notifications unavailable</Body>
-        <Muted>{pushRegistrationStatus.message}</Muted>
-      </Card>
+      <NotificationCard />
     </Page>
   );
 }
