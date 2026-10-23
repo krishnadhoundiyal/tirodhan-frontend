@@ -1,0 +1,38 @@
+name: Rider Mobile quality
+on:
+  pull_request:
+    paths:
+      - 'apps/rider-mobile/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/rider-mobile.yml'
+  push:
+    branches: ['codex/rider-mobile-foundation']
+    paths:
+      - 'apps/rider-mobile/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/rider-mobile.yml'
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:rider
+      - run: pnpm lint:rider
+      - run: pnpm exec prettier --check apps/rider-mobile .github/workflows/rider-mobile.yml package.json
+      - run: pnpm test:rider
+      - run: pnpm doctor:rider
+      - run: pnpm --filter @tirodhan/rider-mobile export
+        env:
+          EXPO_PUBLIC_RIDER_MODE: LIVE

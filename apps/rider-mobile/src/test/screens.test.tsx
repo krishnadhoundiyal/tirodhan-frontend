@@ -1,0 +1,212 @@
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  cleanup,
+} from '@testing-library/react-native';
+import { AppState, Text, type AppStateStatus } from 'react-native';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { Admission } from '../features/Admission';
+import Home from '../features/Home';
+import Offers from '../features/Offers';
+import Assignment from '../features/Assignment';
+import Login from '../features/Login';
+import { createOperations, type Operations } from '../features/operations';
+import { fixtureOwner } from '../features/fixtures';
+import { fixtures, queryClient, session, auth } from '../runtime';
+import type { SessionSnapshot } from '../session/store';
+let mockOperations: Operations;
+let mockState: SessionSnapshot;
+const mockPush = jest.fn();
+jest.mock('expo-router', () => {
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+  return {
+    useFocusEffect: (callback: () => void) =>
+      React.useEffect(callback, [callback]),
+    useRouter: () => ({ push: mockPush }),
+    Redirect: ({ href }: { href: string }) =>
+      React.createElement(Text, null, `Redirect ${href}`),
+  };
+});
+jest.mock('../runtime', () => {
+  const { QueryClient } = jest.requireActual('@tanstack/react-query');
+  const { createFixtureRepository } = jest.requireActual(
+    '../features/fixtures',
+  );
+  return {
+    preview: false,
+    nativeAuth: true,
+    queryClient: new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity },
+        mutations: { retry: false, gcTime: Infinity },
+      },
+    }),
+    fixtures: createFixtureRepository(),
+    operationsForSession: () => mockOperations,
+    session: {
+      getSnapshot: () => mockState,
+      subscribe: () => () => {},
+      loadPrincipal: jest.fn(),
+    },
+    recheckSession: jest.fn(),
+    logout: jest.fn(),
+    auth: { start: jest.fn(), verify: jest.fn(), clear: jest.fn() },
+  };
+});
+jest.setTimeout(20000);
+const listeners = new Set<(state: AppStateStatus) => void>();
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockState = {
+    status: 'authenticated',
+    userId: fixtureOwner,
+    principal: { userId: fixtureOwner, roles: ['RIDER'] },
+    principalState: 'available',
+    principalError: null,
+    ownerVersion: 1,
+  };
+  fixtures.setScenario('offers');
+  mockOperations = createOperations(fixtures.repository, queryClient, {
+    owner: fixtureOwner,
+    key: ['screens'],
+    current: () => true,
+    onForbidden: async () => {},
+  });
+  Object.defineProperty(AppState, 'currentState', {
+    configurable: true,
+    value: 'active',
+  });
+  jest
+    .spyOn(AppState, 'addEventListener')
+    .mockImplementation((_event, listener) => {
+      listeners.add(listener);
+      return { remove: () => listeners.delete(listener) };
+    });
+});
+afterEach(async () => {
+  await cleanup();
+  await queryClient.cancelQueries();
+  queryClient.clear();
+  listeners.clear();
+  jest.restoreAllMocks();
+});
+const mount = (element: React.ReactElement) =>
+  render(
+    <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>,
+  );
+test('direct Rider route redirects signed-out users and denies CUSTOMER/MANAGER', async () => {
+  mockState = { ...mockState, status: 'signedOut', principal: null };
+  const result = await mount(
+    <Admission>
+      <Text>Private Rider data</Text>
+    </Admission>,
+  );
+  expect(screen.getByText('Redirect /')).toBeTruthy();
+  mockState = {
+    ...mockState,
+    status: 'authenticated',
+    principal: { userId: fixtureOwner, roles: ['CUSTOMER', 'MANAGER'] },
+  };
+  await result.rerender(
+    <QueryClientProvider client={queryClient}>
+      <Admission>
+        <Text>Private Rider data</Text>
+      </Admission>
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText('Rider access required')).toBeTruthy();
+  expect(screen.queryByText('Private Rider data')).toBeNull();
+});
+test('home updates availability with the server version and separate work state', async () => {
+  const put = jest.spyOn(fixtures.repository, 'setAvailability');
+  await mount(<Home />);
+  await screen.findByText('Work state: IDLE');
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Request offline' }),
+  );
+  await screen.findByText('Availability intent: OFFLINE');
+  expect(put).toHaveBeenCalledWith('OFFLINE', 1);
+  expect(screen.getByText('Work state: IDLE')).toBeTruthy();
+});
+test('offer acceptance opens authoritative active work after the assignment read', async () => {
+  const accept = jest.spyOn(fixtures.repository, 'accept');
+  await mount(<Offers />);
+  await screen.findByRole('button', { name: 'Accept offer' });
+  await fireEvent.press(screen.getByRole('button', { name: 'Accept offer' }));
+  await waitFor(() =>
+    expect(mockPush).toHaveBeenCalledWith('/(rider)/assignment'),
+  );
+  expect(accept).toHaveBeenCalledTimes(1);
+  expect(
+    queryClient.getQueryData(mockOperations.key('assignment')),
+  ).toMatchObject({ assignment: { assignment_id: 'demo-assignment' } });
+});
+test('expired offer is readable but cannot be accepted', async () => {
+  fixtures.setScenario('expired');
+  await mount(<Offers />);
+  const button = await screen.findByRole('button', { name: 'Accept offer' });
+  expect(button.props.accessibilityState.disabled).toBe(true);
+  expect(screen.getByText(/Expired locally/)).toBeTruthy();
+  expect(mockPush).not.toHaveBeenCalled();
+});
+test('assignment and route absence are distinct empty states', async () => {
+  fixtures.setScenario('empty');
+  await mount(<Assignment />);
+  await screen.findByText('No active assignment');
+  expect(
+    await screen.findByText(/No V2 route is currently exposed/),
+  ).toBeTruthy();
+});
+test('active work includes pickup address/window and server route order', async () => {
+  fixtures.setScenario('active');
+  await mount(<Assignment />);
+  await screen.findByText('Assignment demo-assignment');
+  expect(await screen.findByText('1. PICKUP · PENDING')).toBeTruthy();
+  expect(screen.getByText(/Development fixture pickup/)).toBeTruthy();
+});
+test('foreground return refreshes manager-changed work without periodic polling', async () => {
+  fixtures.setScenario('active');
+  await mount(<Assignment />);
+  await screen.findByText('Assignment demo-assignment');
+  await act(async () => {
+    listeners.forEach((listener) => listener('background'));
+  });
+  fixtures.setScenario('empty');
+  await act(async () => {
+    listeners.forEach((listener) => listener('active'));
+  });
+  await screen.findByText('No active assignment');
+  expect(screen.queryByText('Assignment demo-assignment')).toBeNull();
+});
+test('OTP UI calls the auth flow without passing codes through navigation', async () => {
+  mockState = {
+    ...mockState,
+    status: 'signedOut',
+    principal: null,
+    principalState: 'idle',
+  };
+  await mount(<Login />);
+  await fireEvent.changeText(
+    screen.getByLabelText('Phone number including country code'),
+    '+919999999999',
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Send verification code' }),
+  );
+  await screen.findByLabelText('One-time verification code');
+  expect(auth.start).toHaveBeenCalledWith('+919999999999');
+  await fireEvent.changeText(
+    screen.getByLabelText('One-time verification code'),
+    '123456',
+  );
+  await fireEvent.press(
+    screen.getByRole('button', { name: 'Verify and sign in' }),
+  );
+  await waitFor(() => expect(auth.verify).toHaveBeenCalledWith('123456'));
+  expect(session.getSnapshot().status).toBe('signedOut');
+  expect(mockPush).not.toHaveBeenCalled();
+});
