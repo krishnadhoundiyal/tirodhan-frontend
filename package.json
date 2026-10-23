@@ -6,6 +6,12 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "dev:rider": "pnpm --filter @tirodhan/rider-mobile start",
+    "dev:rider:go": "pnpm --filter @tirodhan/rider-mobile start:go",
+    "typecheck:rider": "turbo run typecheck --filter=@tirodhan/rider-mobile",
+    "lint:rider": "turbo run lint --filter=@tirodhan/rider-mobile",
+    "test:rider": "turbo run test --filter=@tirodhan/rider-mobile",
+    "doctor:rider": "pnpm --filter @tirodhan/rider-mobile run doctor",
     "dev:customer": "pnpm --filter @tirodhan/customer-mobile start",
     "typecheck": "turbo run typecheck --filter=@tirodhan/customer-mobile",
     "lint": "turbo run lint --filter=@tirodhan/customer-mobile",
