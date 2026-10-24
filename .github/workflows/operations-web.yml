@@ -1,0 +1,48 @@
+name: Operations Web quality
+on:
+  pull_request:
+    paths:
+      - 'apps/operations-web/**'
+      - 'docs/OPERATIONS_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/operations-web.yml'
+  push:
+    branches: ['codex/operations-web-foundation']
+    paths:
+      - 'apps/operations-web/**'
+      - 'docs/OPERATIONS_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/operations-web.yml'
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:operations
+      - run: pnpm run lint:operations
+      - run: pnpm exec prettier --check apps/operations-web docs/OPERATIONS_WEB_*.md .github/workflows/operations-web.yml package.json turbo.json
+      - run: pnpm run test:operations
+      - run: pnpm --filter @tirodhan/operations-web run build
+        env:
+          NODE_ENV: development
+          VITE_OPERATIONS_PREVIEW: 'true'
+      - run: pnpm --filter @tirodhan/operations-web run test:production-isolation
+      - run: pnpm run build:operations
+        env:
+          NODE_ENV: production
+          VITE_OPERATIONS_PREVIEW: 'true'
+      - run: pnpm --filter @tirodhan/operations-web run test:production-isolation
