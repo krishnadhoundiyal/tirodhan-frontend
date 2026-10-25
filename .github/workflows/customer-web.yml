@@ -1,0 +1,55 @@
+name: Customer Web quality
+on:
+  pull_request:
+    paths:
+      - 'apps/customer-web/**'
+      - 'docs/CUSTOMER_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/customer-web.yml'
+  push:
+    branches: ['codex/customer-web-foundation']
+    paths:
+      - 'apps/customer-web/**'
+      - 'docs/CUSTOMER_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/customer-web.yml'
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:customer-web
+      - run: pnpm run lint:customer-web
+      - run: pnpm exec prettier --check apps/customer-web docs/CUSTOMER_WEB_*.md .github/workflows/customer-web.yml package.json turbo.json
+      - run: pnpm run test:customer-web
+      - run: pnpm --filter @tirodhan/customer-web run build
+        env:
+          NODE_ENV: development
+          VITE_CUSTOMER_FIXTURE: 'true'
+      - run: pnpm --filter @tirodhan/customer-web run test:production-isolation
+      - run: pnpm run build:customer-web
+        env:
+          NODE_ENV: production
+          VITE_CUSTOMER_FIXTURE: 'true'
+      - run: pnpm --filter @tirodhan/customer-web run test:production-isolation
+      - run: pnpm --filter @tirodhan/customer-web run test:browser
+      - run: pnpm --filter @tirodhan/customer-web run test:browser --fixture
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: customer-web-browser-observations
+          path: .local/cw-p0-01/browser/*.png

@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"],
-      "env": ["VITE_OPERATIONS_*", "NODE_ENV"]
+      "env": ["VITE_OPERATIONS_*", "VITE_CUSTOMER_*", "NODE_ENV"]
     },
     "typecheck": { "outputs": [] },
     "lint": { "outputs": [] },

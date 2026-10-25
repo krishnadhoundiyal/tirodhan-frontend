@@ -7,4 +7,5 @@ docs/FRONTEND_ARCHITECTURE.md
 dist
 coverage
 .local
+apps/customer-web/.ssr/
 apps/customer-mobile/expo-env.d.ts
