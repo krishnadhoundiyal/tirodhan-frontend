@@ -50,6 +50,8 @@ export interface SessionState {
   epoch: number;
   principal: Principal | null;
   logoutUnconfirmed: boolean;
+  cleanupPending: boolean;
+  invalidation: 'session' | 'logout';
 }
 export class CustomerSession {
   #token: string | null = null;
@@ -60,10 +62,10 @@ export class CustomerSession {
   #life = new AbortController();
   #refresh: Promise<void> | null = null;
   #logout: Promise<void> | null = null;
-  #cleanup = new Set<() => Promise<void>>();
+  #cleanup = new Set<(signal: AbortSignal) => Promise<void>>();
   #otpStart: { phone: string; client_request_id: string } | null = null;
   #startFlight: Promise<string> | null = null;
-  beforeLogout(fn: () => Promise<void>) {
+  beforeLogout(fn: (signal: AbortSignal) => Promise<void>) {
     this.#cleanup.add(fn);
     return () => {
       this.#cleanup.delete(fn);
@@ -90,6 +92,8 @@ export class CustomerSession {
       epoch: 0,
       principal: null,
       logoutUnconfirmed: false,
+      cleanupPending: false,
+      invalidation: 'session',
     };
   }
   snapshot = () => this.#state;
@@ -103,7 +107,11 @@ export class CustomerSession {
     this.#state = { ...this.#state, ...change };
     this.#listeners.forEach((fn) => fn());
   }
-  #clear(phase: Phase, logoutUnconfirmed = this.#state.logoutUnconfirmed) {
+  #clear(
+    phase: Phase,
+    logoutUnconfirmed = this.#state.logoutUnconfirmed,
+    invalidation: SessionState['invalidation'] = 'session',
+  ) {
     this.#life.abort();
     this.#life = new AbortController();
     this.#token = null;
@@ -116,6 +124,8 @@ export class CustomerSession {
       principal: null,
       epoch: this.#state.epoch + 1,
       logoutUnconfirmed,
+      invalidation,
+      cleanupPending: invalidation === 'logout' || this.#state.cleanupPending,
     });
   }
   #current(epoch: number) {
@@ -249,6 +259,7 @@ export class CustomerSession {
     if (
       this.#state.phase !== 'signedOut' ||
       this.#state.logoutUnconfirmed ||
+      this.#state.cleanupPending ||
       !/^\+[1-9]\d{7,14}$/.test(phone)
     )
       throw new CustomerError('unavailable');
@@ -276,6 +287,7 @@ export class CustomerSession {
     if (
       this.#state.phase !== 'signedOut' ||
       this.#state.logoutUnconfirmed ||
+      this.#state.cleanupPending ||
       !/^\d{4,8}$/.test(code)
     )
       throw new CustomerError('unavailable');
@@ -310,7 +322,11 @@ export class CustomerSession {
     }
   }
   async resume() {
-    if (this.#state.phase !== 'signedOut' || this.#state.logoutUnconfirmed)
+    if (
+      this.#state.phase !== 'signedOut' ||
+      this.#state.logoutUnconfirmed ||
+      this.#state.cleanupPending
+    )
       throw new CustomerError('unavailable');
     this.#clear('checking');
     const epoch = this.#state.epoch;
@@ -396,19 +412,43 @@ export class CustomerSession {
   }
   logout() {
     if (this.#logout) return this.#logout;
+    const epoch = this.#state.epoch + 1;
+    // Start both independently. Neither a thrown hook nor a stalled local store
+    // may prevent an ordered attempt to revoke the gateway session.
+    const pending = Promise.resolve().then(async () => {
+      const [cleanup, gateway] = await Promise.allSettled([
+        this.#bounded(async (s) => {
+          const results = await Promise.allSettled(
+            [...this.#cleanup].map((fn) => Promise.resolve().then(() => fn(s))),
+          );
+          if (results.some((r) => r.status === 'rejected'))
+            throw new CustomerError('unavailable');
+        }),
+        this.#bounded((s) => this.adapter.logout(s)),
+      ]);
+      this.#current(epoch);
+      const cleanupPending = cleanup.status === 'rejected';
+      const logoutUnconfirmed = gateway.status === 'rejected';
+      this.#emit({
+        cleanupPending,
+        logoutUnconfirmed,
+        phase:
+          cleanupPending || logoutUnconfirmed
+            ? 'error'
+            : this.adapter.available
+              ? 'signedOut'
+              : 'unavailable',
+      });
+      if (logoutUnconfirmed) throw gateway.reason;
+      if (cleanupPending) throw new CustomerError('unavailable');
+    });
+    // Publish the shared flight before synchronous subscribers observe invalidation.
+    this.#logout = pending;
     this.#clear(
       this.adapter.available ? 'signedOut' : 'unavailable',
       this.adapter.available,
+      'logout',
     );
-    const epoch = this.#state.epoch;
-    const pending = this.#bounded(async (s) => {
-      await Promise.all([...this.#cleanup].map((fn) => fn()));
-      return this.adapter.logout(s);
-    }).then(() => {
-      this.#current(epoch);
-      this.#emit({ logoutUnconfirmed: false });
-    });
-    this.#logout = pending;
     void pending
       .finally(() => {
         if (this.#logout === pending) this.#logout = null;

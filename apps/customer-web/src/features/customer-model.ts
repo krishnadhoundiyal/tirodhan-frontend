@@ -81,6 +81,12 @@ export class CustomerExperience {
   #vault: EncryptedRecovery | null = null;
   #storages = new Map<string, SecureCredential>();
   #payments = new Map<string, PaymentFlow>();
+  #invalidated = false;
+  #invalidationError: unknown;
+  #disposeFlight: Promise<void> | null = null;
+  #explicitDisposal = false;
+  #retainedDisposed = false;
+  #explicitDisposed = false;
   #commands = new Map<
     string,
     { body: string; command: PreparedCommand<unknown>; uncertain: boolean }
@@ -116,6 +122,7 @@ export class CustomerExperience {
     );
   }
   current = () =>
+    !this.#invalidated &&
     this.session.snapshot().phase === 'ready' &&
     this.session.snapshot().epoch === this.epoch &&
     this.session.snapshot().principal?.user_id === this.owner;
@@ -265,18 +272,8 @@ export class CustomerExperience {
     const entry = this.#commands.get(scope);
     return entry ? JSON.parse(entry.body) : null;
   }
-  async dispose(explicitLogout: boolean) {
-    this.options.checkout?.close();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const revoke = explicitLogout
-      ? this.notifications.revoke(controller.signal)
-      : Promise.resolve();
-    const settledRevoke = revoke.then(
-      () => null,
-      (error) => error,
-    );
-    this.notifications.clear();
+  invalidate() {
+    this.#invalidated = true;
     this.#commands.clear();
     this.#payments.clear();
     this.#listeners.clear();
@@ -289,11 +286,79 @@ export class CustomerExperience {
       currentLocation: null,
       confirmedAddress: null,
     };
-    if (this.#vault) await this.#vault.dispose(explicitLogout);
-    else if (explicitLogout)
-      await Promise.all([...this.#storages.values()].map((s) => s.remove()));
-    const revokeError = await settledRevoke;
-    clearTimeout(timer);
-    if (revokeError) throw revokeError;
+    this.#invalidationError = undefined;
+    for (const stop of [
+      () => this.options.checkout?.close(),
+      () => this.notifications.clear(),
+    ]) {
+      try {
+        stop();
+      } catch (error) {
+        this.#invalidationError = error;
+      }
+    }
+  }
+  dispose(explicitLogout: boolean): Promise<void> {
+    if (this.#explicitDisposed || (this.#retainedDisposed && !explicitLogout))
+      return Promise.resolve();
+    if (this.#disposeFlight && (!explicitLogout || this.#explicitDisposal))
+      return this.#disposeFlight;
+    const previous = this.#disposeFlight;
+    this.#explicitDisposal = explicitLogout;
+    this.invalidate();
+    const stopError = this.#invalidationError;
+    // Upgrade a passive disposal synchronously, before its recovery lease can release.
+    const recovery = this.#vault
+      ? this.#vault.dispose(explicitLogout)
+      : explicitLogout
+        ? Promise.allSettled(
+            [...this.#storages.values()].map((s) =>
+              Promise.resolve().then(() => s.remove()),
+            ),
+          ).then((results) => {
+            if (results.some((r) => r.status === 'rejected'))
+              throw new ApiError(0, 'configuration');
+          })
+        : Promise.resolve();
+    const revoke = explicitLogout
+      ? this.#revokeNotifications()
+      : Promise.resolve();
+    const flight = Promise.allSettled([
+      previous ?? Promise.resolve(),
+      recovery,
+      revoke,
+    ]).then((results) => {
+      if (stopError || results.some((r) => r.status === 'rejected'))
+        throw new ApiError(0, 'configuration');
+      this.#retainedDisposed = true;
+      this.#explicitDisposed ||= explicitLogout;
+    });
+    this.#disposeFlight = flight;
+    void flight
+      .finally(() => {
+        if (this.#disposeFlight === flight) this.#disposeFlight = null;
+      })
+      .catch(() => {});
+    return flight;
+  }
+  async #revokeNotifications() {
+    const controller = new AbortController();
+    let rejectAbort: () => void = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      rejectAbort = () => reject(new ApiError(0, 'timeout'));
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+    });
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      await Promise.race([
+        Promise.resolve().then(() =>
+          this.notifications.revoke(controller.signal),
+        ),
+        aborted,
+      ]);
+    } finally {
+      clearTimeout(timer);
+      controller.signal.removeEventListener('abort', rejectAbort);
+    }
   }
 }

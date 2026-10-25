@@ -443,3 +443,27 @@ test('explicitly resumable backend START/CHECKOUT_READY reopens the same owned a
   expect(screen.queryByText('Payment received')).toBeNull();
   await act(() => r.session.logout());
 });
+
+test('confirmed gateway logout with failed auxiliary cleanup offers local retry without misreporting revocation', async () => {
+  history.replaceState(null, '', '/account/addresses');
+  const r = fixtureRuntime();
+  await r.development!.signIn();
+  jest
+    .spyOn(r.customer().notifications, 'revoke')
+    .mockRejectedValueOnce(Error('Private notification failure'))
+    .mockResolvedValue(undefined);
+  render(<CustomerApp runtime={r} />);
+  await screen.findByText('Sample home');
+  button('Log out');
+  await screen.findByText(
+    'Gateway sign-out is confirmed. Local recovery cleanup is still pending; complete it before starting a new session.',
+  );
+  expect(r.session.snapshot().logoutUnconfirmed).toBe(false);
+  expect(
+    screen.queryByRole('button', { name: 'Enter development customer' }),
+  ).toBeNull();
+  expect(screen.queryByText('Sample home')).toBeNull();
+  button('Retry local cleanup');
+  await screen.findByRole('button', { name: 'Enter development customer' });
+  expect(r.session.snapshot().cleanupPending).toBe(false);
+});

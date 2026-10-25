@@ -10,7 +10,8 @@ export function AuthForm({ runtime }: { runtime: Runtime }) {
     [error, setError] = useState('');
   const available =
     session.snapshot().phase === 'signedOut' &&
-    !session.snapshot().logoutUnconfirmed;
+    !session.snapshot().logoutUnconfirmed &&
+    !session.snapshot().cleanupPending;
   async function action(fn: () => Promise<void>) {
     if (busy) return;
     setBusy(true);

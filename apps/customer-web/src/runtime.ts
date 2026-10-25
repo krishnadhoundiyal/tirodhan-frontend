@@ -35,15 +35,23 @@ export function createRuntime(
   const retired = new Set<CustomerExperience>();
   session.beforeLogout(async () => {
     if (experience) retired.add(experience);
-    await Promise.all([...retired].map((x) => x.dispose(true)));
-    retired.clear();
+    const results = await Promise.allSettled(
+      [...retired].map(async (x) => {
+        await x.dispose(true);
+        retired.delete(x);
+      }),
+    );
+    if (results.some((r) => r.status === 'rejected'))
+      throw new Error('Local customer cleanup pending');
   });
   session.subscribe(() => {
     const next = session.snapshot().epoch;
     if (next !== epoch) {
       if (experience) {
         retired.add(experience);
-        void experience.dispose(false).catch(() => {});
+        if (session.snapshot().invalidation === 'logout')
+          experience.invalidate();
+        else void experience.dispose(false).catch(() => {});
         experience = null;
       }
       epoch = next;
@@ -60,8 +68,10 @@ export function createRuntime(
         const owner = session.snapshot().principal?.user_id;
         for (const old of retired)
           if (old.owner !== owner) {
-            void old.dispose(true).catch(() => {});
-            retired.delete(old);
+            void old
+              .dispose(true)
+              .then(() => retired.delete(old))
+              .catch(() => {});
           }
         experience = new CustomerExperience(session, options);
       }

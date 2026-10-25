@@ -107,7 +107,8 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
                 </p>
                 {runtime.development &&
                   state.phase === 'signedOut' &&
-                  !state.logoutUnconfirmed && (
+                  !state.logoutUnconfirmed &&
+                  !state.cleanupPending && (
                     <button
                       className="button"
                       disabled={busy}
@@ -130,6 +131,23 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
                       }
                     >
                       Retry sign-out
+                    </button>
+                  </>
+                )}
+                {!state.logoutUnconfirmed && state.cleanupPending && (
+                  <>
+                    <p>
+                      Gateway sign-out is confirmed. Local recovery cleanup is
+                      still pending; complete it before starting a new session.
+                    </p>
+                    <button
+                      className="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void action(() => runtime.session.logout())
+                      }
+                    >
+                      Retry local cleanup
                     </button>
                   </>
                 )}

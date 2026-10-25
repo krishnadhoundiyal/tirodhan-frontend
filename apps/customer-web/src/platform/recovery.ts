@@ -100,6 +100,10 @@ export class EncryptedRecovery {
   #data: Record<string, string> | null = null;
   #key: CryptoKey | null = null;
   #stopped = false;
+  #disposeFlight: Promise<void> | null = null;
+  #deleteRequested = false;
+  #deleted = false;
+  #disposed = false;
   constructor(
     private owner: string,
     private current: () => boolean,
@@ -207,18 +211,45 @@ export class EncryptedRecovery {
         }),
     };
   }
-  dispose(explicitLogout: boolean) {
+  dispose(explicitLogout: boolean): Promise<void> {
     this.#stopped = true;
-    return this.#serial(async () => {
+    this.#deleteRequested ||= explicitLogout;
+    if (this.#deleted || (this.#disposed && !explicitLogout))
+      return Promise.resolve();
+    if (this.#disposeFlight) {
+      const flight = this.#disposeFlight;
+      return explicitLogout
+        ? flight.then(() => (this.#deleted ? undefined : this.dispose(true)))
+        : flight;
+    }
+    const flight = this.#serial(async () => {
       try {
-        if (explicitLogout) await this.database.remove(this.owner);
+        if (this.#deleteRequested && !this.#deleted) {
+          // A previously retained/retired experience must reacquire ownership;
+          // deletion without the owner lock can erase another tab's journal.
+          this.#release ??= await this.lease.acquire(this.owner);
+          await this.database.remove(this.owner);
+          this.#deleted = true;
+        }
       } finally {
         this.#data = null;
         this.#key = null;
-        this.#release?.();
-        this.#release = null;
+        this.#disposed = true;
+        // Failed deletion retains the lease for explicit retry. Never expose a
+        // readable stale record by releasing in a failed-delete finally block.
+        if (!this.#deleteRequested || this.#deleted) {
+          this.#release?.();
+          this.#release = null;
+        }
       }
     });
+    this.#disposeFlight = flight;
+    void flight
+      .finally(() => {
+        if (this.#disposeFlight === flight) this.#disposeFlight = null;
+      })
+      .catch(() => {});
+    return flight;
   }
 }
 export function memoryStorage(): SecureCredential {
