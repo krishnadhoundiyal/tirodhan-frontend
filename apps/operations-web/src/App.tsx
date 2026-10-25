@@ -11,6 +11,7 @@ import {
   Routes,
 } from './screens';
 import { Reference } from './ui';
+import { CommandCenter } from './command-ui';
 
 const sections = [
   'Overview',
@@ -265,7 +266,7 @@ function Shell({ runtime }: { runtime: Runtime }) {
           </span>
         </div>
         <div className="workspace-label">
-          Manager console <span>P0 · Read only</span>
+          Manager console <span>P0 · Manager decisions</span>
         </div>
         <nav aria-label="Operations">
           <ul>
@@ -306,7 +307,11 @@ function Shell({ runtime }: { runtime: Runtime }) {
             <strong>{section}</strong>
           </div>
           <div className="topbar-state">
-            <span className="status neutral">Read-only console</span>
+            <span className="status neutral">
+              {runtime.kind === 'fixture'
+                ? 'Fixture simulation'
+                : 'Manager session'}
+            </span>
             <span className="muted">All times IST</span>
           </div>
         </header>
@@ -351,10 +356,11 @@ function Shell({ runtime }: { runtime: Runtime }) {
         )}
         <main id="main-content" tabIndex={-1} className="content">
           {screen}
+          <CommandCenter runtime={runtime} navigation={section} />
         </main>
         <footer className="page-footer">
           Tirodhan Operations · Backend state is authoritative · Explicit reads,
-          no background polling
+          bounded selected-resource reconciliation
         </footer>
       </div>
     </div>

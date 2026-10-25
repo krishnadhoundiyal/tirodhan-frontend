@@ -136,7 +136,7 @@ export const reads = {
     ),
 };
 
-// OW-P0-01 has no operational mutation transport and no arbitrary-path escape hatch.
+// Reads and mutations have separate allowlists; neither exposes arbitrary paths.
 export function isManagerRead(path: string): boolean {
   const [base] = path.split('?');
   const guid = '[0-9a-fA-F-]{36}';

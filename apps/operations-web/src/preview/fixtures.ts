@@ -9,6 +9,8 @@ export const scenarios = [
   'Open pickup incident',
   'Rider failure',
   'Recovery pending',
+  'Recovery options available',
+  'Recovery needs attention',
   'Reassignment completed',
   'Backend unavailable',
 ] as const;
@@ -38,7 +40,12 @@ const evaluation = {
 export function fixturePayload(path: string, scenario: Scenario): unknown {
   const base = path.split('?')[0],
     empty = scenario === 'Empty region',
-    failed = scenario === 'Rider failure' || scenario === 'Recovery pending',
+    failed = [
+      'Rider failure',
+      'Recovery pending',
+      'Recovery options available',
+      'Recovery needs attention',
+    ].includes(scenario),
     completed = scenario === 'Reassignment completed';
   const now = Date.now();
   const evaluated = {
@@ -228,9 +235,9 @@ export function fixturePayload(path: string, scenario: Scenario): unknown {
     };
   const replacementState = completed
     ? 'COMPLETED'
-    : scenario === 'Recovery pending'
+    : scenario === 'Recovery pending' || scenario === 'Recovery needs attention'
       ? 'APPROVED'
-      : failed
+      : failed && scenario !== 'Recovery options available'
         ? 'REQUESTED'
         : 'RECOMMENDED';
   const row = {
@@ -273,20 +280,23 @@ export function fixturePayload(path: string, scenario: Scenario): unknown {
         : scenario === 'Recovery pending'
           ? 'PENDING'
           : 'NOT_AUTHORIZED',
-      evaluation: failed ? null : evaluated,
+      evaluation:
+        failed && scenario !== 'Recovery options available' ? null : evaluated,
       candidates:
-        empty || failed
+        empty || (failed && scenario !== 'Recovery options available')
           ? []
           : [
               {
                 candidate_id: fixtureId(52),
                 rank: 1,
-                selectable: !completed,
+                selectable: !completed && replacementState === 'RECOMMENDED',
                 rider_id: fixtureId(1),
                 vehicle_id: fixtureId(72),
                 shift_id: fixtureId(73),
                 region_id: fixtureId(60),
                 resource_kind: 'COMMITTED',
+                affected_bookings: [fixtureId(55)],
+                route_versions: [{ route_id: fixtureId(30), version: 3 }],
               },
             ],
       next_cursor: null,
@@ -381,14 +391,23 @@ export function fixturePayload(path: string, scenario: Scenario): unknown {
           ],
       next_cursor: null,
       assignments:
-        scenario === 'Recovery pending' || completed
+        scenario === 'Recovery pending' ||
+        scenario === 'Recovery needs attention' ||
+        completed
           ? [
               {
                 assignment_id: fixtureId(80),
                 shift_id: fixtureId(73),
-                status: completed ? 'ACTIVATED' : 'PENDING',
+                status: completed
+                  ? 'ACTIVATED'
+                  : scenario === 'Recovery needs attention'
+                    ? 'ATTENTION'
+                    : 'PENDING',
                 version: 2,
-                failure_code: null,
+                failure_code:
+                  scenario === 'Recovery needs attention'
+                    ? 'ACTIVE_SHIFT_REQUIRED'
+                    : null,
                 activation_id: row.activation_id,
                 decision: 'RECORDED',
                 rendezvous: 'MANAGER_COORDINATED',
@@ -406,6 +425,11 @@ export function fixturePayload(path: string, scenario: Scenario): unknown {
 }
 export function fixtureRuntime(initial: Scenario = 'Normal workload') {
   let current = initial;
+  const replay = new Map<
+    string,
+    { payload: string; body: unknown; status: number }
+  >();
+  const assigned = new Set<string>();
   const adapter: WebSessionAdapter = {
     available: true,
     startOtp: async () => {
@@ -419,15 +443,101 @@ export function fixtureRuntime(initial: Scenario = 'Normal workload') {
   };
   const fixtureFetch: typeof fetch = async (input, options) => {
     const url = new URL(String(input));
-    if (url.origin !== 'https://fixture.invalid' || options?.method !== 'GET')
+    if (
+      url.origin !== 'https://fixture.invalid' ||
+      !['GET', 'POST'].includes(options?.method ?? '')
+    )
       throw new Error('Fixture isolation violation.');
-    if (options.signal?.aborted) throw new Error('Cancelled.');
+    if (options?.signal?.aborted) throw new Error('Cancelled.');
+    if (options?.method === 'POST') {
+      // Pure in-memory simulation. Never delegates to fetch or any real transport.
+      const payload = String(options.body);
+      const request = JSON.parse(payload) as Record<string, unknown>;
+      const key =
+        url.pathname +
+        ':' +
+        String(
+          request.client_command_id ??
+            request.client_reassignment_id ??
+            payload,
+        );
+      let recorded = replay.get(key);
+      if (recorded && recorded.payload !== payload)
+        return {
+          status: 409,
+          ok: false,
+          json: async () => ({ detail: 'COMMAND_CONFLICT' }),
+        } as Response;
+      if (!recorded) {
+        let body: unknown,
+          status = 200;
+        if (
+          /\/collection-groups\/[^/]+\/assign$/.test(url.pathname) ||
+          /\/assignments\/[^/]+\/reassign$/.test(url.pathname)
+        ) {
+          const group = url.pathname.includes('collection-groups')
+            ? url.pathname.split('/')[4]
+            : fixtureId(10);
+          assigned.add(group);
+          body = {
+            assignment_id: fixtureId(
+              url.pathname.includes('reassign') ? 91 : 90,
+            ),
+            collection_group_id: group,
+            rider_id: request.rider_id ?? request.replacement_rider_id,
+            source: 'MANAGER_ASSIGNED',
+            status: 'ACTIVE',
+            assigned_at: new Date().toISOString(),
+            started_at: null,
+            completed_at: null,
+          };
+        } else if (url.pathname === '/v2/manager/rider-failures') {
+          status = 202;
+          body = {
+            resource_id:
+              request.operation === 'RETRY_RECOVERY'
+                ? request.assignment_id
+                : request.operation === 'RESOLVE_FAILED_PICKUP'
+                  ? request.replacement_id
+                  : request.operation === 'APPROVE_RECOVERY'
+                    ? request.incident_id
+                    : fixtureId(40),
+          };
+          current =
+            request.operation === 'APPROVE_RECOVERY' ||
+            request.operation === 'RETRY_RECOVERY'
+              ? 'Recovery pending'
+              : 'Rider failure';
+        } else if (/\/replacements\/[^/]+\/select$/.test(url.pathname)) {
+          current = 'Recovery pending';
+          body = fixturePayload(
+            `/v2/manager/replacements/${url.pathname.split('/')[4]}`,
+            current,
+          );
+        } else throw new Error('Unknown fixture command.');
+        recorded = { payload, body, status };
+        replay.set(key, recorded);
+      }
+      return {
+        status: recorded.status,
+        ok: true,
+        json: async () => structuredClone(recorded.body),
+      } as Response;
+    }
     const status =
       current === 'Backend unavailable' && url.pathname !== '/v1/auth/me'
         ? 503
         : 200;
-    const body =
+    let body =
       status === 200 ? fixturePayload(url.pathname + url.search, current) : {};
+    if (
+      url.pathname === '/v1/manager/collection-groups/pending-assignment' &&
+      Array.isArray(body)
+    )
+      body = body.filter(
+        (row: { collection_group_id: string }) =>
+          !assigned.has(row.collection_group_id),
+      );
     return {
       status,
       ok: status === 200,
@@ -454,6 +564,8 @@ export function fixtureRuntime(initial: Scenario = 'Normal workload') {
       if (!scenarios.includes(value as Scenario)) return;
       await runtime.session.logout();
       current = value as Scenario;
+      replay.clear();
+      assigned.clear();
       await runtime.session.restore();
     },
   };

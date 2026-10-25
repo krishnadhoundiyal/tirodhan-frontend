@@ -107,6 +107,40 @@ select {
 input {
   width: 100%;
 }
+input[type='checkbox'] {
+  width: auto;
+  justify-self: start;
+}
+.panel > label,
+.evaluation > label {
+  margin: 14px 0;
+}
+select {
+  max-width: 100%;
+  width: 100%;
+  text-overflow: ellipsis;
+}
+.evaluation {
+  overflow-wrap: anywhere;
+}
+.evaluation button {
+  margin: 6px 8px 6px 0;
+}
+.evaluation dl {
+  display: grid;
+  gap: 10px;
+}
+.evaluation dt {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.evaluation dd {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+#manager-command-review {
+  scroll-margin-top: 20px;
+}
 .app-shell {
   min-height: 100vh;
   display: grid;

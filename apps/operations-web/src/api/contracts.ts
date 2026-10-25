@@ -95,6 +95,12 @@ export const candidate = object({
   shift_id: uuid,
   region_id: uuid,
   resource_kind: text,
+  affected_bookings: (value) =>
+    value === undefined ? undefined : list(uuid, 100)(value),
+  route_versions: (value) =>
+    value === undefined
+      ? undefined
+      : list(object({ route_id: uuid, version: integer }), 1000)(value),
 });
 export const evaluation = object({
   evaluation_id: uuid,
