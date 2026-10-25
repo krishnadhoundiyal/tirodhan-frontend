@@ -1,4 +1,4 @@
-# Tirodhan Operations Web · OW-P0-02
+# Tirodhan Operations Web · OW-P0-03
 
 Independent React/TypeScript/Vite manager console in the pnpm monorepo.
 No source imports from Customer or Rider apps, shared-package scaffolds, server
@@ -32,10 +32,12 @@ VITE_OPERATIONS_API_ORIGIN can configure only an exact HTTPS gateway origin,
 not enable authentication. No direct call to FastAPI OTP verify/refresh/logout
 is made, because those mobile contracts expose/consume refresh credentials.
 
-The injected adapter/session implementation is unit/component tested, but there
-is no verified real APIM adapter. Do not claim live login, live manager reads,
+The injected adapter/session implementation and the concrete OW-P0-03 APIM
+adapter are locally tested. The latter is not imported by production composition
+and has no approved live configuration. There is no verified real APIM adapter.
+Do not claim live login, live manager reads,
 real recovery, end-to-end authorization, CORS/CSRF security or deployment
-acceptance from fixtures or mocks. See the three Operations Web documents under
+acceptance from fixtures or mocks. See the Operations Web documents under
 `docs/` for exact contracts, missing reads and mandatory POC evidence.
 
 V2 feature flags default false. Fleet requires dispatch; orchestration requires
@@ -110,6 +112,14 @@ map or image service is needed.
 See `docs/OPERATIONS_WEB_MUTATION_CONTRACT_MATRIX.md` for command contracts,
 V1/V2 boundaries and replay rules. The OW-P0-01 read matrix/report are historical;
 OW-P0-02 extends them without changing the authentication POC requirements.
+
+OW-P0-03 adds candidate policies, exact-expression C# tests, XML validation and
+configuration tests under `infra/apim/web-session/`. All environment values remain
+unapproved, and the checked-in policy denies all requests. The concrete adapter
+requires exact approved nonproduction inputs and Web Locks; it serializes cookie
+operations, bounds caller waits and requires confirmed cleanup after ambiguous
+verification. See that directory's README and the APIM findings/session/security
+reports before proposing any real environment test. Nothing deploys from CI.
 
 ## Build and CI
 

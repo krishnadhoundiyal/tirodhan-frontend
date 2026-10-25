@@ -102,7 +102,7 @@ function grant(value: unknown) {
   return result;
 }
 
-/** APIM contract interface only. No browser HTTP auth adapter exists in this increment. */
+/** Production composition stays gated; the separate APIM POC adapter is not enabled. */
 export class ManagerSession {
   #token: string | null = null;
   #expiresAt = 0;

@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'apps/operations-web/**'
+      - 'infra/apim/web-session/**'
       - 'docs/OPERATIONS_WEB_*.md'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -13,8 +14,10 @@ on:
     branches:
       - 'codex/operations-web-foundation'
       - 'codex/operations-web-manager-commands'
+      - 'codex/operations-web-apim-session-poc'
     paths:
       - 'apps/operations-web/**'
+      - 'infra/apim/web-session/**'
       - 'docs/OPERATIONS_WEB_*.md'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -36,8 +39,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck:operations
       - run: pnpm run lint:operations
-      - run: pnpm exec prettier --check apps/operations-web docs/OPERATIONS_WEB_*.md .github/workflows/operations-web.yml package.json turbo.json
+      - run: pnpm exec prettier --check apps/operations-web infra/apim/web-session docs/OPERATIONS_WEB_*.md .github/workflows/operations-web.yml package.json turbo.json
       - run: pnpm run test:operations
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: node infra/apim/web-session/render.mjs
+      - run: node --test infra/apim/web-session/render.test.mjs
+      - run: python3 infra/apim/web-session/validate.py
+      - run: dotnet run --project infra/apim/web-session/tests/PolicyExpressions.csproj
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+          DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: 'false'
       - run: pnpm --filter @tirodhan/operations-web run build
         env:
           NODE_ENV: development

@@ -1,0 +1,21 @@
+{
+  "approved": false,
+  "approvalReference": null,
+  "environment": "nonprod",
+  "gatewayOrigin": null,
+  "backendOrigin": null,
+  "routes": { "start": null, "verify": null, "refresh": null, "logout": null },
+  "csrf": { "header": null, "value": null },
+  "products": {
+    "operations": { "origin": null, "cookieName": null },
+    "customer": { "origin": null, "cookieName": null }
+  },
+  "cookie": {
+    "sameSite": null,
+    "sameSiteJustification": null,
+    "maxAgeSeconds": null
+  },
+  "backendRefreshTtlSeconds": null,
+  "diagnosticsReviewed": false,
+  "effectivePolicyReviewed": false
+}
