@@ -1,0 +1,4 @@
+<Project><PropertyGroup>
+  <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)../../../../.local/ow-p0-03/policy-obj/</BaseIntermediateOutputPath>
+  <OutputPath>$(MSBuildThisFileDirectory)../../../../.local/ow-p0-03/policy-bin/</OutputPath>
+</PropertyGroup></Project>

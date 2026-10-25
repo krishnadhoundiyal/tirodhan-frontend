@@ -2,6 +2,14 @@
 
 Status: **not established; live browser authentication unavailable**.
 
+OW-P0-03 adds an independently tested concrete adapter and undeployed candidate
+policies under `infra/apim/web-session/`. They are not wired into `main.tsx`.
+Configuration remains unapproved, the default policy denies all requests, and
+no real APIM/browser acceptance has occurred. See the OW-P0-03 findings, session
+contract and security report for current evidence and blockers. The foundation
+observations below are historical evidence; local adapter/policy source now
+exists without changing the production gate.
+
 The frozen architecture was read in full. Backend commit
 `b281e03a47d202fd8b5c3d895075aa358062c5fa` exposes Phase 1O `/v1/auth/otp/start`,
 `/otp/verify`, `/refresh`, `/logout` and `/me`. Its verify response includes a
@@ -78,9 +86,10 @@ actual allowlisted values and versioned policy implementation in POC evidence:
 
 The POC must include versioned approved policy artifacts, environment/origin
 inventory, redacted real browser observations and automated positive/negative
-tests. A separate review must authorize implementing and enabling the concrete
-browser HTTP adapter. This increment creates no APIM policy, BFF, identity
-provider, cloud resource, cookie or production credential.
+tests. OW-P0-03 authorizes local adapter and candidate policy implementation;
+enabling them still requires accepted real-environment evidence and explicit
+configuration/deployment approval. No BFF, identity provider, cloud resource,
+live cookie or production credential is created by the local POC implementation.
 
 ## Development fixtures
 
