@@ -113,7 +113,14 @@ export class CustomerApi {
     return this.#prepare(
       `/v1/addresses/${uuid(existing.address_id)}`,
       'PUT',
-      { ...addressWrite(values), expected_version: positive(existing.version) },
+      {
+        ...addressWrite(values),
+        location:
+          values.address.trim() === existing.address.trim()
+            ? values.location
+            : null,
+        expected_version: positive(existing.version),
+      },
       200,
       (v) => {
         const a = address(v);

@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'apps/customer-web/**'
+      - 'apps/customer-mobile/**'
       - 'docs/CUSTOMER_WEB_*.md'
       - 'package.json'
       - 'pnpm-lock.yaml'
@@ -13,6 +14,7 @@ on:
     branches: ['codex/customer-web-foundation']
     paths:
       - 'apps/customer-web/**'
+      - 'apps/customer-mobile/**'
       - 'docs/CUSTOMER_WEB_*.md'
       - 'package.json'
       - 'pnpm-lock.yaml'

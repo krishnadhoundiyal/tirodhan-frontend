@@ -10,6 +10,8 @@ export class CustomerError extends Error {
       | 'conflict'
       | 'input'
       | 'rateLimit',
+    public readonly status = 0,
+    public readonly code?: string,
   ) {
     super(
       {

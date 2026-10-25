@@ -7,6 +7,14 @@
     },
     "typecheck": { "outputs": [] },
     "lint": { "outputs": [] },
-    "test": { "outputs": [] }
+    "test": { "outputs": [] },
+    "@tirodhan/customer-web#test": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/customer-mobile/src/**",
+        "$TURBO_ROOT$/apps/customer-mobile/app/**"
+      ]
+    }
   }
 }

@@ -16,6 +16,16 @@ import { createRuntime } from '../runtime';
 beforeEach(() => {
   history.replaceState(null, '', '/account/addresses');
 });
+test('owned collection deep links retain private account metadata', () => {
+  expect(
+    metadata('/account/collections/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa').title,
+  ).toBe('Your account | Tirodhan');
+  expect(
+    metadata('/account/collections/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+      .noindex,
+  ).toBe(true);
+  expect(metadata('/unknown').title).toBe('Page not found | Tirodhan');
+});
 async function enter() {
   const runtime = fixtureRuntime();
   render(<CustomerApp runtime={runtime} />);

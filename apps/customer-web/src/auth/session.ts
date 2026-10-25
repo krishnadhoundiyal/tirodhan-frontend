@@ -1,3 +1,5 @@
+import { customerPathAllowed } from '../api/paths';
+import { safeErrorCode } from '../parity/api/errors';
 import {
   CustomerError,
   grant,
@@ -58,6 +60,15 @@ export class CustomerSession {
   #life = new AbortController();
   #refresh: Promise<void> | null = null;
   #logout: Promise<void> | null = null;
+  #cleanup = new Set<() => Promise<void>>();
+  #otpStart: { phone: string; client_request_id: string } | null = null;
+  #startFlight: Promise<string> | null = null;
+  beforeLogout(fn: () => Promise<void>) {
+    this.#cleanup.add(fn);
+    return () => {
+      this.#cleanup.delete(fn);
+    };
+  }
   constructor(
     readonly adapter: WebSessionAdapter,
     private origin: string | null,
@@ -98,6 +109,8 @@ export class CustomerSession {
     this.#token = null;
     this.#expiresAt = 0;
     this.#refresh = null;
+    this.#otpStart = null;
+    this.#startFlight = null;
     this.#emit({
       phase,
       principal: null,
@@ -146,7 +159,7 @@ export class CustomerSession {
       signals.forEach((s) => s.removeEventListener('abort', abort));
     }
   }
-  #status(code: number): never {
+  #status(code: number, safeCode?: string): never {
     throw new CustomerError(
       (
         {
@@ -158,6 +171,8 @@ export class CustomerSession {
           429: 'rateLimit',
         } as const
       )[code as 401] ?? 'unavailable',
+      code,
+      safeCode,
     );
   }
   async #http(
@@ -183,7 +198,18 @@ export class CustomerSession {
         redirect: 'error',
         referrerPolicy: 'no-referrer',
       });
-      if (response.status !== success) this.#status(response.status);
+      if (response.status !== success) {
+        let safeCode: string | undefined;
+        if (response.headers.get('content-type')?.includes('application/json'))
+          try {
+            const raw = await response.text();
+            if (raw.length < 10000) safeCode = safeErrorCode(JSON.parse(raw));
+          } catch {
+            /* Never retain raw errors. */
+          }
+        this.#status(response.status, safeCode);
+      }
+      if (success === 204) return undefined;
       if (
         !response.headers
           .get('content-type')
@@ -219,22 +245,32 @@ export class CustomerSession {
     if (!me.roles.includes('CUSTOMER')) throw new CustomerError('forbidden');
     this.#emit({ phase: 'ready', principal: me });
   }
-  async startOtp(phone: string) {
+  async startOtp(phone: string, resend = false) {
     if (
       this.#state.phase !== 'signedOut' ||
       this.#state.logoutUnconfirmed ||
       !/^\+[1-9]\d{7,14}$/.test(phone)
     )
       throw new CustomerError('unavailable');
-    const epoch = this.#state.epoch;
-    const result = await this.#bounded((s) =>
-      this.adapter.startOtp(
-        { client_request_id: crypto.randomUUID(), phone },
-        s,
-      ),
-    );
-    this.#current(epoch);
-    return uuid(record(result, ['challenge_reference']).challenge_reference);
+    if (this.#startFlight) return this.#startFlight;
+    if (resend || this.#otpStart?.phone !== phone)
+      this.#otpStart = { phone, client_request_id: crypto.randomUUID() };
+    const request = { ...this.#otpStart! },
+      epoch = this.#state.epoch;
+    const task = (async () => {
+      const result = await this.#bounded((s) =>
+        this.adapter.startOtp(request, s),
+      );
+      this.#current(epoch);
+      return uuid(record(result, ['challenge_reference']).challenge_reference);
+    })();
+    this.#startFlight = task;
+    void task
+      .finally(() => {
+        if (this.#startFlight === task) this.#startFlight = null;
+      })
+      .catch(() => {});
+    return task;
   }
   async login(challenge_reference: string, code: string) {
     if (
@@ -321,10 +357,7 @@ export class CustomerSession {
     signal?: AbortSignal,
   ) {
     if (this.#state.phase !== 'ready') throw new CustomerError('unauthorized');
-    if (!(
-      /^\/v1\/addresses(?:\/[a-f\d-]{36}(?:\/archive)?)?$/.test(path) ||
-      /^\/v1\/serviceability\/contexts(?:\/[a-f\d-]{36})?$/.test(path)
-    ))
+    if (!customerPathAllowed(path, init.method ?? 'GET'))
       throw new CustomerError('invalid');
     const epoch = this.#state.epoch;
     let refreshed = false;
@@ -368,7 +401,10 @@ export class CustomerSession {
       this.adapter.available,
     );
     const epoch = this.#state.epoch;
-    const pending = this.#bounded((s) => this.adapter.logout(s)).then(() => {
+    const pending = this.#bounded(async (s) => {
+      await Promise.all([...this.#cleanup].map((fn) => fn()));
+      return this.adapter.logout(s);
+    }).then(() => {
       this.#current(epoch);
       this.#emit({ logoutUnconfirmed: false });
     });

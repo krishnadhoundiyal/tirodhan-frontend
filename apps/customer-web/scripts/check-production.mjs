@@ -24,6 +24,11 @@ for (const path of paths.filter((p) => /\.(js|html|css|json|map)$/.test(p))) {
     'DEVELOPMENT FIXTURE',
     'Development check scenario',
     'Enter development customer',
+    'customer-fixture-catalogue',
+    'Confirm payment in fixture backend',
+    'rzp_test_fixtureOnly',
+    'LOST_HOLD',
+    'Complete fixture refund',
   ])
     assert(!body.includes(marker), `Fixture leak: ${path}`);
   assert(!path.endsWith('.map'), 'Production source maps must be absent');

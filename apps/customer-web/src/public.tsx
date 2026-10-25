@@ -48,6 +48,21 @@ export const pages = {
 } as const;
 export const publicPaths = Object.keys(pages);
 export const accountPaths = [
+  '/account/catalogue',
+  '/account/review',
+  '/account/pickup',
+  '/account/bookings',
+  '/account/collections',
+  '/account/profile',
+  '/account/preferences',
+  '/account/favourites',
+  '/account/payment-methods',
+  '/account/notifications',
+  '/account/feedback',
+  '/account/information/help',
+  '/account/information/about',
+  '/account/information/privacy',
+  '/account/information/terms',
   '/account',
   '/account/addresses',
   '/account/serviceability',
@@ -59,7 +74,7 @@ export function normalizePath(path: string) {
 export function metadata(path: string) {
   const page = pages[path as keyof typeof pages];
   return {
-    title: `${page?.title ?? (accountPaths.includes(path) ? 'Your account' : 'Page not found')} | Tirodhan`,
+    title: `${page?.title ?? (path === '/account' || path.startsWith('/account/') ? 'Your account' : 'Page not found')} | Tirodhan`,
     description:
       page?.description ?? 'Customer account access is not yet activated.',
     noindex: !page || path.startsWith('/policies'),

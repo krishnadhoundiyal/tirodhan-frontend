@@ -1,118 +1,64 @@
-# CW-P0-01 implementation report
+# Customer Web CW-P0-01 implementation and parity correction report
 
-25 October 2026, Asia/Calcutta. Independent Customer Web foundation. **Production authentication, booking and payment remain disabled.** No Azure resources, APIM deployment, EAS builds, paid service, credentials or production deployment were initiated.
+25 October 2026, Asia/Calcutta. **The former booking/payment/functionality exclusions are withdrawn.** Customer Web now implements the complete current Customer Mobile business journey behind explicit security and backend capability gates. This is implementation/fixture parity evidence, not production authentication, provider payment or deployment acceptance.
 
-## Repository and delivery
+## Delivery and reference
 
-- Writable checkout: `C:\Users\91956\Tirodhan-frontend\tirodhan-frontend`.
-- Clean starting main: `fe663159cbbc97b50a6a96a09bd7afa4e939b234`, verified equal to fetched origin/main and containing merged Operations PR #12 (`7679624`). No merge performed.
-- Branch: `codex/customer-web-foundation`. This report is included in the implementation commit; the full final SHA and push confirmation are reported in the delivery message (a commit cannot include its own hash).
-- Backend `b281e03a47d202fd8b5c3d895075aa358062c5fa` inspected strictly read-only, working tree unchanged.
-- No PR creation/merge/deployment. Existing app sources and APIM artifacts are unchanged by Git comparison to the starting commit.
+- Existing branch `codex/customer-web-foundation`; completed foundation commit `f4b76cf0f600d46d7d7bfa15072c964825f31ad8` retained. No merge, branch recreation or PR creation.
+- Functional reference: actual Mobile source tree at `d0a9ab15a7436d2329b6af103775c72ff1bfc969`, verified equal to the Mobile tree in fetched main. All 111 source/test modules and 17 routes/layouts are inventoried with normalized SHA-256 in `apps/customer-web/parity-source-audit.json`.
+- Backend `b281e03a47d202fd8b5c3d895075aa358062c5fa` inspected read-only and unchanged. No backend code, branch, tests, config or resource modified.
+- Durable screen/workflow mapping: [CUSTOMER_WEB_FUNCTIONAL_PARITY_MATRIX.md](CUSTOMER_WEB_FUNCTIONAL_PARITY_MATRIX.md). No omitted current Mobile customer business capability or unmapped route. The source snapshot test flags subsequent Mobile changes; Customer Web CI also watches Mobile paths for parity drift, and its package-scoped Turbo test cache includes those source inputs so a cached pass cannot hide a Mobile change.
+- Git comparison to the starting foundation confirms Customer Mobile, Rider Mobile, Operations Web and APIM policy sources unchanged. Frozen frontend application/deployment/sharing boundaries remain intact.
 
-## Rendering choice
+## Implemented correction
 
-React 19.2.3, TypeScript 6.0.3, Vite 8.3.5 and TanStack Query 5.104.1 match the established Operations web toolchain without importing its source. Exact app-local versions reuse packages already present in the lockfile. No new package version or server framework is introduced.
+Independent CUSTOMER browser navigation now covers account overview, catalogue, booking review, saved addresses/serviceability, bookings/activity/history, owned detail, profile/preferences/favourites/payment methods, notifications, feedback and approved-content views. Nine prerendered public pages, fonts, original artwork, genuine public 404 behavior, private noindex and the original foundation remain.
 
-An unrendered marketing SPA would leave public content dependent on JavaScript. A request-time SSR framework would add runtime/hosting work for finite static content, while another SSG framework would add a new toolchain unnecessarily. The selected approach uses Vite's supported [build-time prerendering direction](https://vite.dev/guide/ssr) and React server rendering: a small app-local script emits each finite public route as complete HTML, while account paths load a separate client application. No required production server/BFF/cloud cost. Hosting and approved canonical-origin prerequisites are in the README; no hosting action performed. This is scoped implementation, not a global Category 4 architecture decision.
+The complete synthetic and typed HTTP journey is category selection → optional quantities/current revision-bound weight bands/precise kg and litres → backend quotation and explicit price review → current address context → V2 projected slot → atomic hold → reservation-bound booking → backend-controlled START/RESUME/WAIT/UNAVAILABLE payment → browser checkout signal → independent backend verification → cancellation/compensation → separate refund projection → active/history and authoritative handover visibility. Backend DTOs, amounts, policy/quote confirmation, command identities, server durations, hold binding and financial state remain authoritative. No frontend pricing/route/compensation business logic or callback-established payment success.
 
-## Implemented product
+Pure declaration/slot/quote/catalogue/booking/recovery modules are app-local reviewed copies of current Mobile code, with a browser transport/storage boundary and current backend financial DTO additions. No cross-app runtime imports, React Native/Expo/SecureStore dependency, new shared package or silent global shared-code policy. Mobile's older payment DTO lacks current action/readiness fields and its current main composes nativeCheckout null; historical native implementation reports were not used as proof of runtime availability.
 
-Nine public pages: Home, How it works, What we collect, Availability, Help, About, policy navigation and two explicitly unpublished policy notices. Semantic/crawlable HTML and metadata, bilingual sentiment, licensed self-hosted Inter/Tiro Hindi, original descriptive SVG, responsive desktop/tablet/mobile layouts, script-free navigation/FAQs and clear publishing boundaries. No fabricated legal terms, testimonials, partners, support numbers, inventory, universal coverage or collection-time/price promises.
+The app-local concrete APIM adapter, phone/OTP/resend/cookie-resume controls and CUSTOMER admission are implemented/tested. Production still composes unavailableAdapter and null API origin. Exact origin/configuration/CSRF, credential stripping, cross-tab cookie serialization, finite UI waits and confirmed logout semantics remain enforced. Raw mobile auth routes/refresh storage are never used. Issues #13/#14 remain open and the live gate stays closed.
 
-CUSTOMER foundation: strict access/principal admission, CUSTOMER membership, memory-only access grant, coordinated bounded refresh/replay, account isolation/cancellation, logout and confirmation recovery, owner-scoped private query state. Manual address create/list/edit/archive/default selection, current-address selection and address-version-bound serviceability. Typed clients implement exactly the seven verified principal/address/serviceability endpoints in the contract matrix; all live use remains behind the production auth gate. Pending checks use explicit persisted reads; expiry/changed address/changed customer/error invalidate presentation. No geolocation request, planner call, backend role assertion or personal data persistence.
+Booking/payment recovery persists only encrypted address-free frozen command data in IndexedDB, using AES-GCM, nonextractable CryptoKey and an owner Web Lock. Both exact commands are persisted before the first hold. Deterministic hold/bound-request reads and exact replay handle uncertainty/reload without duplicate booking. SDK availability is checked before payment preparation; key/attempt/launch identity survive ambiguity. Unsupported secure browser storage/locks, tampering, stale owner and write failure fail closed. Explicit logout wipes recovery; account switching fences and deletes prior-owner state. Nonextractable keys do not protect compromised same-origin JavaScript: CSP and real browser security acceptance remain required. Auth tokens, OTP, phone, address text, GPS, callbacks and subscriptions are never persisted. Personal-data edit commands retain in-memory identity across navigation, without an offline queue.
 
-Prepared writes retain exact serialized body/idempotency identity through explicit retry and 401 replay; unstructured 409 remains conservatively locked because it cannot distinguish an in-progress command from a version conflict. Account navigation retains drafts/commands, logout clears them. A document reload loses recovery. Real business-write activation needs deployed retention and reconciliation evidence; no replacement queue or guessed idempotency API was added.
+Browser-specific equivalents: lazy [official hosted Razorpay Standard Checkout](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/) test checkout with approval/origin/readiness checks; native browser forms/history; explicit browser geolocation; optional configurable Leaflet/geocoder with no default provider; service-worker Web Push permission/subscription/revocation port and equivalent in-app notification history. No native push-token reuse. Permission denial/manual fallback and stale async-result fences are implemented. Notification payloads trigger owned reads, never financial state or arbitrary navigation.
 
-Development-only fixture module owns all simulated identities, sign-in action, scenario controls and fake HTTP. Production excludes the whole module and its synthetic phone/code/identity/address/banner content, including when preview flags are true. Fixture scenarios cover serviceable, unserviceable, pending→terminal, technical failure, expiry and backend-unavailable states with zero live protected requests.
+Confirmed address defect corrected at **both API preparation and UI**: changing saved address text clears previous coordinates, even if a caller submits them. Label-only edits retain coordinates. Attaching a new location requires explicit confirmation bound to the exact text and selected coordinates. Regression tests use a previously geocoded address and a changed selected point.
 
-Explicitly unavailable: production OTP/cookie authentication; profile/preferences editing; actual dynamic catalogue; slot/quote/hold/reservation/booking/payment; booking history; notifications; geolocation; unpublished policy/support content. Existing backend catalogue/history/financial APIs were identified as existing and deferred, not falsely labelled missing. No native Razorpay in browser and no payment success claim.
+All proposed account/content/notification clients and forms exist with isolated fixture integration tests. Their production capabilities remain gated by the same verified missing server routes as Mobile. Missing approval did not cause omitted implementation. Current backend cancellation actually invokes refund compensation; that capability was reverified from current source and implemented rather than inherited as a historical blocker.
 
-## Validation evidence
+## Validation
 
-Final results and any host limitations are recorded below before commit. Tests use synthetic data and establish local contract behavior, not real backend/APIM acceptance. Browser evidence uses actual headless Chrome on loopback with an isolated profile, no browser SDK dependency, live credentials or remote protected services.
+All evidence uses isolated synthetic data. Logs/results under ignored `.local/cw-parity/`; screenshots under `.local/cw-p0-01/browser/`. Final commit/push SHA is reported in the delivery message, because a commit cannot contain its own hash.
 
-| Check                                   | Actual result                                                                                                                                                                                                |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| pnpm 11.25 frozen install               | Passed; strict supply-chain/release-age controls retained.                                                                                                                                                   |
-| Customer Web TypeScript / ESLint / Jest | Passed; 72 tests, 3 suites. No console warnings in final Jest run.                                                                                                                                           |
-| Formatting                              | Scoped default-LF check and global check with end-of-line auto (Windows checkout) passed. Only the generated .ssr output is newly ignored; source and security validation remain checked.                    |
-| Web builds and fixture exclusion        | Passed with NODE_ENV=development and production, fixture flag true in both. Complete public HTML/metadata/internal links/private noindex verified.                                                           |
-| Chrome production                       | Passed nine public routes with JavaScript disabled; private gate, noindex, keyboard skip link, mobile menu, Home 390/768/1440px without horizontal overflow. Zero live protected requests/resource failures. |
-| Chrome development fixture              | Passed CUSTOMER admission, create/select/check/archive/logout; account 390/768/1440px without overflow and zero live protected requests.                                                                     |
-| Customer Mobile regression              | TypeScript, ESLint, 223 Jest tests/20 suites passed. Android/iOS/web exports passed.                                                                                                                         |
-| Rider Mobile regression                 | TypeScript, ESLint, 206 Jest tests/15 suites passed. Android/iOS/web exports passed.                                                                                                                         |
-| Operations regression                   | TypeScript, ESLint, 164 Jest tests/6 suites, production build and fixture exclusion passed; manager commands included unchanged.                                                                             |
-| APIM local regression                   | 22 Node tests, XML static checks, 87 exact C# assertions passed. No policy blob change.                                                                                                                      |
-| Both Expo Doctor runs                   | 20/21 checks completed successfully; remote Expo config schema check could not complete. Same result after one retry. No dependency mismatch reported; no check disabled.                                    |
-| Real backend / APIM / physical devices  | Not exercised or claimed. No native compilation or cloud build was initiated.                                                                                                                                |
+| Check                             | Result                                                                                                                                                                                                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| pnpm 11.25 frozen installation    | Passed, all 5 workspace projects; 1225 lockfile entries verified under unchanged strict supply-chain/release-age policies.                                                                                                                                                                                         |
+| Customer Web TypeScript / ESLint  | Passed, zero errors/warnings; browser storage lint strengthened with the sole audited encrypted-recovery boundary.                                                                                                                                                                                                 |
+| Customer Web Jest                 | Passed: 212 tests across 9 suites cover original foundation plus complete HTTP/UI financial journey, core hold/booking uncertainty/restart, action/SDK tampering, verification deadlines, AES-GCM/owner/lease cleanup, auth adapter/role/cookie boundaries, cursor expiry, geocoder races and address regressions. |
+| Development and production builds | Passed with fixture flag true in both NODE_ENV modes; production scanner confirms fixture/key/control exclusion, complete public HTML/metadata/internal links and private noindex.                                                                                                                                 |
+| Actual Chrome production          | Passed public pages with scripts disabled, private activation gate/deep-link behavior, keyboard/DOM/responsive checks and zero live protected requests.                                                                                                                                                            |
+| Actual Chrome fixture             | Full category/declaration/quote/slot/hold/booking/callback-only wait/backend confirmation/cancel/refund/history; real nonextractable-key IndexedDB structured-clone restart, cross-tab exclusion and logout deletion. No live protected requests/cookies.                                                          |
+| Responsive/visual                 | Catalogue, booking review and financial detail at 390/768/1440px without page overflow. Screenshots visually inspected: legible inputs/declarations, clear price/payment/refund states, bounded quick-category scrolling. No physical-device/screen-reader acceptance claimed.                                     |
+| Customer Mobile regression        | TypeScript / ESLint passed; 223 tests, 20 suites passed.                                                                                                                                                                                                                                                           |
+| Rider Mobile regression           | TypeScript / ESLint passed; 206 tests, 15 suites passed.                                                                                                                                                                                                                                                           |
+| Operations Web regression         | TypeScript / ESLint passed; 164 tests, 6 suites passed.                                                                                                                                                                                                                                                            |
+| Unchanged APIM policy regression  | Canonical render, XML/static checks, 22 Node tests and 87 exact C# expression assertions passed; Git policy blob unchanged. Not gateway acceptance.                                                                                                                                                                |
+| Formatting / final Git checks     | Passed scoped default formatting, whole-repository formatting with Windows end-of-line auto, and Git whitespace/protected-tree checks. No validation/security suppression or backend changes.                                                                                                                      |
 
-Expo Doctor's exact failure on both apps: `Unexpected error while running 'Check Expo config (app.json/ app.config.js) schema' check: TypeError: fetch failed` / `Client network socket disconnected before secure TLS connection was established`. The tool states that this check requires a connection to the Expo API. CI must retain and rerun the check on a working connection; this is not reported as a green Doctor run.
+Customer Web is a browser-only correction. No native build, physical-device test, real notification delivery, live APIM authentication, real provider checkout/payment/refund, Azure resource or EAS action was initiated. No new native package/version or SDK configuration was introduced. Existing apps were regression tested rather than reporting local browser fixtures as native acceptance.
 
-Initial sandbox mobile exports failed with Hermes `Failed to write file ... index.hbc: permission denied`, exit 6. Re-running the exact Android/iOS/web export outside the sandbox passed on both apps; no package/source/SDK/security workaround was used. Existing nonfatal Expo Leaflet CSS/NO_COLOR notices and Vite TanStack use-client directive notices were left intact. No Expo/RN version change or warnings suppression.
+## Exact dependency changes
 
-The final production public entry JavaScript is approximately 8.83 kB (3.56 kB gzip); CUSTOMER application assets load separately. This is build size evidence, not a measured real-device performance score. Public HTML itself is generated after the client-size listing.
+Only `apps/customer-web/package.json` gains `leaflet: 1.9.4` and devDependency `@types/leaflet: 1.9.22`, reusing versions/resolutions already in the workspace. Normal pnpm resolution followed by frozen installation; lockfile adds these two importer entries (six lines), with no package archive/version/shared graph change. No Expo/React Native/other application manifest, pnpm version, release-age/security policy or dependency-validation exclusion changed.
 
-Screenshots (local, synthetic; CI also uploads browser artifacts):
+## Activation gates and remaining acceptance
 
-- `.local/cw-p0-01/browser/public-390.png`, `public-768.png`, `public-1440.png`.
-- `.local/cw-p0-01/browser/account-390.png`, `account-768.png`, `account-1440.png`.
+1. APIM [#13](https://github.com/krishnadhoundiyal/tirodhan-frontend/issues/13) and [#14](https://github.com/krishnadhoundiyal/tirodhan-frontend/issues/14) rechecked open: approve exact nonproduction resources/origins/routes/separate Customer/Operations cookies/CSRF/diagnostics, then perform real stripping/cookie/CORS/CSRF/refresh/logout/cross-product/stalled multi-tab/latency acceptance. Until then keep adapter uncomposed.
+2. Missing backend capabilities shared with Mobile: profile, preferences, favourites, content, feedback, paymentMethods, notification history and push registration. Verify real contracts/deployment before enabling their controls. Backend catalogue, quotes, projections, holds, booking, history, payment/refund reads and cancellation compensation are implemented, not deferred.
+3. Browser checkout: approved nonproduction origin/test merchant, CSP/script/frame/connect policy and actual provider/backend webhook/reconciliation acceptance. The implemented factory is nonproduction/test-key-only. Callbacks never establish paid state. No production activation claimed.
+4. Optional map/geocoder provider URLs/privacy/attribution and browser Web Push subscription/revocation/VAPID contract. These are explicit inputs; no guessed host/token API.
+5. Approved API/CORS/idempotency retention/reconciliation, legal/support copy, canonical origin and hosting/security/cache/account-scoped deep-link fallback. Real customer/browser/device acceptance remains separate from fixture parity.
 
-Home desktop/mobile and account mobile captures were visually inspected. Observed: calm cream/gold editorial hero, legible bilingual text, visible service gate, clear fixture label, mobile account navigation and address form/actions without horizontal overflow. Public pages remain usable with scripts disabled. Keyboard skip link and native mobile menu were exercised. Formal assistive-technology audit, physical-device acceptance and real gateway/browser security acceptance remain unproven.
-
-## Dependency and no-regression evidence
-
-Node 24.19.0 / pnpm 11.25.0 and security controls unchanged. Normal pnpm installation verified the existing lockfile against supply-chain policies, then added the Customer Web importer. Frozen install passed. No existing application manifest changed.
-
-Normal resolution also deduplicated existing transitive references: Expo Metro config postcss 8.5.29 → already present 8.5.31 (orphan 8.5.29 removed); typescript-eslint project-service 8.71.1 references tsconfig-utils/types 8.72.0 already present; eslint-plugin-expo 1.1.0 references utils 8.72.0 already present. Acorn 8.19.0 gains hasBin metadata. No new resolution archive/version introduced; no lockfile surgery, validation exclusions or warning-suppression dependency change. Shared-graph validation therefore includes all existing apps and exports rather than relying only on unchanged source.
-
-APIM regression uses its existing canonical render step (required before byte-for-byte artifact tests on a CRLF Windows checkout), 22 Node tests, XML static validation and 87 exact C# expression assertions. The generated policy remains identical to the starting Git blob. These remain local policy tests, not real APIM acceptance.
-
-## Remaining CW-P0-02 / release prerequisites
-
-Approve and prove the real APIM Customer web session integration and cross-product isolation (#13/#14); approve exact gateway/origins/routes/cookies/CSRF/diagnostics and deployed API/runtime/retention contract. Approve public canonical origin, editorial text, legal/support content and hosting security/cache/404 behavior before publication. Dynamic catalogue, weight/volume declarations, backend quotations, V2 projections/atomic holds/reservation-bound booking and backend-authoritative web-provider payment need their own verified next-increment integration and tests. No frontend pricing or SDK-callback success shortcut is authorized.
-
-## All changed files
-
-- `.github/workflows/customer-web.yml`
-- `.prettierignore`
-- `apps/customer-web/.gitignore`
-- `apps/customer-web/eslint.config.js`
-- `apps/customer-web/index.html`
-- `apps/customer-web/jest.config.cjs`
-- `apps/customer-web/package.json`
-- `apps/customer-web/public/fonts/Inter-Regular.ttf`
-- `apps/customer-web/public/fonts/Inter-Semibold.ttf`
-- `apps/customer-web/public/fonts/LICENSE.txt`
-- `apps/customer-web/public/fonts/Tiro-LICENSE.txt`
-- `apps/customer-web/public/fonts/TiroDevanagariHindi-Regular.ttf`
-- `apps/customer-web/README.md`
-- `apps/customer-web/scripts/browser-smoke.mjs`
-- `apps/customer-web/scripts/build.mjs`
-- `apps/customer-web/scripts/check-production.mjs`
-- `apps/customer-web/scripts/dev-fixture.mjs`
-- `apps/customer-web/src/api/contracts.ts`
-- `apps/customer-web/src/api/customer.ts`
-- `apps/customer-web/src/auth/session.ts`
-- `apps/customer-web/src/customer-app.tsx`
-- `apps/customer-web/src/env.d.ts`
-- `apps/customer-web/src/fixture.tsx`
-- `apps/customer-web/src/main.tsx`
-- `apps/customer-web/src/prerender.tsx`
-- `apps/customer-web/src/public.tsx`
-- `apps/customer-web/src/runtime.ts`
-- `apps/customer-web/src/style.css`
-- `apps/customer-web/src/test/contracts.test.ts`
-- `apps/customer-web/src/test/helpers.ts`
-- `apps/customer-web/src/test/session.test.ts`
-- `apps/customer-web/src/test/setup.ts`
-- `apps/customer-web/src/test/ui.test.tsx`
-- `apps/customer-web/tsconfig.json`
-- `apps/customer-web/vite.config.ts`
-- `docs/CUSTOMER_WEB_AUTH_BOUNDARY.md`
-- `docs/CUSTOMER_WEB_BACKEND_CONTRACT_MATRIX.md`
-- `docs/CUSTOMER_WEB_P0_01_IMPLEMENTATION_REPORT.md`
-- `docs/CUSTOMER_WEB_PUBLIC_CONTENT_INVENTORY.md`
-- `package.json`
-- `pnpm-lock.yaml`
-- `turbo.json`
+The matrix identifies every current Mobile capability and its implemented browser equivalent, with verified gates separated from missing implementation. Production release remains gated; no merge, deployment or PR was authorized or performed.

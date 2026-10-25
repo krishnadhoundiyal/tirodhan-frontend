@@ -16,7 +16,11 @@ if (fixture) {
     process.execPath,
     ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5187'],
     {
-      env: { ...process.env, VITE_CUSTOMER_FIXTURE: 'true' },
+      env: {
+        ...process.env,
+        NODE_ENV: 'development',
+        VITE_CUSTOMER_FIXTURE: 'true',
+      },
       stdio: 'ignore',
       windowsHide: true,
     },
@@ -32,7 +36,15 @@ if (fixture) {
         pathname = `${pathname.replace(/\/$/, '')}/index.html`;
       const path = resolve(root, `.${pathname}`);
       if (!path.startsWith(root + sep)) throw new Error('Invalid path');
-      const data = await readFile(path);
+      const data = await readFile(path).catch(async (e) => {
+        if (
+          /^\/account\/collections\/[a-f\d-]{36}\/?$/i.test(
+            new URL(req.url, 'http://local.invalid').pathname,
+          )
+        )
+          return readFile(resolve(root, 'account/index.html'));
+        throw e;
+      });
       res.setHeader(
         'Content-Type',
         {
@@ -170,6 +182,9 @@ try {
     await evaluate('document.fonts.ready');
   };
   const button = async (label) => {
+    await until(
+      `[...document.querySelectorAll('button')].some(b=>b.textContent.trim()===${JSON.stringify(label)}&&!b.disabled)`,
+    );
     assert(
       await evaluate(
         `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)return false;b.click();return true;})()`,
@@ -320,6 +335,131 @@ try {
     await button('Confirm archive');
     await until(
       "![...document.querySelectorAll('article')].some(a=>a.textContent.includes('Browser fixture address'))",
+    );
+    const clickLink = async (name) => {
+      assert(
+        await evaluate(
+          `(()=>{const a=[...document.querySelectorAll('nav[aria-label="Customer account"] a')].find(a=>a.textContent===${JSON.stringify(name)});if(!a)return false;a.click();return true;})()`,
+        ),
+      );
+    };
+    const field = async (label, value) => {
+      await evaluate(
+        `(()=>{const l=[...document.querySelectorAll('label')].find(l=>l.textContent.trim()===${JSON.stringify(label)});const el=l?.querySelector('input,textarea');if(!el)throw Error('Missing field');el.focus();el.select();})()`,
+      );
+      await call('Input.insertText', { text: value });
+    };
+    // Select the remaining saved address, then complete an actual rendered journey.
+    await button('Select address');
+    await clickLink('Collection catalogue');
+    await until(
+      'Boolean(document.querySelector(\'[aria-label="Select Used Flowers & Garlands"]\'))',
+    );
+    for (const width of [390, 768, 1440]) {
+      await call('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 1050,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      assert(
+        await evaluate('document.documentElement.scrollWidth<=innerWidth'),
+        `Catalogue overflow ${width}`,
+      );
+      await screenshot(`catalogue-${width}`);
+    }
+    await evaluate(
+      'document.querySelector(\'[aria-label="Select Used Flowers & Garlands"]\').click()',
+    );
+    await button('Review your collection →');
+    await until(
+      'Boolean(document.querySelector(\'input[name="band-flowers"]\'))',
+    );
+    await evaluate(
+      'document.querySelector(\'input[name="band-flowers"]\').click()',
+    );
+    await field('Occupied volume in litres for Used Flowers & Garlands', '2.5');
+    await field('Quantity for Used Flowers & Garlands (optional)', '2');
+    await button('Check pickup availability');
+    await until(
+      "document.body.textContent.includes('Address serviceable. No slot is reserved yet.')",
+    );
+    await until(
+      "Boolean([...document.querySelectorAll('label')].find(l=>l.textContent.includes('I have reviewed this current backend price.')))",
+    );
+    await evaluate(
+      "[...document.querySelectorAll('label')].find(l=>l.textContent.includes('I have reviewed this current backend price.')).querySelector('input').click()",
+    );
+    await until(
+      'Boolean(document.querySelector(\'input[name="slot"]:not(:disabled)\'))',
+    );
+    await evaluate(
+      'document.querySelector(\'input[name="slot"]:not(:disabled)\').click()',
+    );
+    for (const width of [390, 768, 1440]) {
+      await call('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 1050,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      assert(
+        await evaluate('document.documentElement.scrollWidth<=innerWidth'),
+        `Review overflow ${width}`,
+      );
+      await screenshot(`booking-review-${width}`);
+    }
+    await button('Reserve capacity and create booking');
+    await until("document.body.textContent.includes('Payment pending')");
+    await evaluate(
+      "[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Provider callback without backend confirmation')).querySelector('input').click()",
+    );
+    await button('Continue to secure payment');
+    await until(
+      "document.body.textContent.includes('Tirodhan is verifying the existing attempt.')",
+    );
+    assert(
+      !(await evaluate(
+        "document.body.textContent.includes('Payment received')",
+      )),
+    );
+    await button('Confirm payment in fixture backend');
+    await button('Refresh payment status');
+    await until("document.body.textContent.includes('Payment received')");
+    await button('Refresh pickup details');
+    await until(
+      "Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Cancel pickup'))",
+    );
+    await button('Cancel pickup');
+    await button('Confirm cancellation');
+    await until("document.body.textContent.includes('Refund initiated')");
+    await button('Complete fixture refund');
+    await button('Refresh pickup details');
+    await until("document.body.textContent.includes('Refund completed')");
+    for (const width of [390, 768, 1440]) {
+      await call('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 1050,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      assert(
+        await evaluate('document.documentElement.scrollWidth<=innerWidth'),
+        `Financial detail overflow ${width}`,
+      );
+      await screenshot(`financial-detail-${width}`);
+    }
+    await clickLink('Activity');
+    await evaluate(
+      "[...document.querySelectorAll('[role=tab]')].find(b=>b.textContent==='History').click()",
+    );
+    await until("document.body.textContent.includes('CANCELLED')");
+    await screenshot('booking-history');
+    // Exercise actual structured cloning of a nonextractable CryptoKey into IndexedDB.
+    assert(
+      await evaluate(
+        `(async()=>{const {EncryptedRecovery,indexedRecoveryDatabase,browserLease}=await import('/src/platform/recovery.ts');const owner='dddddddd-dddd-4ddd-8ddd-dddddddddddd';const db=indexedRecoveryDatabase(globalThis.indexedDB);const v=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));await v.storage('booking').set('synthetic-command-only');const stored=await db.get(owner);if(stored.key.extractable)throw Error('Extractable key');await v.dispose(false);const restored=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));if(await restored.storage('booking').get()!=='synthetic-command-only')throw Error('Recovery lost');const blocked=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));let denied=false;try{await blocked.storage('booking').get();}catch{denied=true;}if(!denied)throw Error('Lease bypass');await restored.dispose(true);return !(await db.get(owner));})()`,
+      ),
     );
     await button('Log out');
     await until("!document.body.textContent.includes('Sample home')");

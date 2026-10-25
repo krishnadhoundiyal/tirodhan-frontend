@@ -11,6 +11,9 @@ import {
 } from './api/contracts';
 import type { Prepared } from './api/customer';
 import type { Runtime } from './runtime';
+import { ProductArea, AuthForm } from './features/product';
+import { LocationControls } from './features/location-controls';
+import { needsAddressConfirmation } from './parity/features/addresses/distance';
 
 function usePath() {
   const [path, setPath] = useState(() => normalizePath(location.pathname));
@@ -132,11 +135,13 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
                 )}
               </section>
             )}
+            <AuthForm runtime={runtime} />
             <div className="account-reserved">
               <h2>What your account will include</h2>
               <p>
-                Saved addresses and address-specific serviceability. Booking,
-                activity and payment are not yet available.
+                Your complete collection journey, including saved addresses,
+                booking, payment, activity and account preferences. Live access
+                awaits verified secure browser authentication.
               </p>
             </div>
           </>
@@ -165,52 +170,42 @@ function Account({
   navigate: (path: string) => void;
   owner: string;
 }) {
+  const links = [
+    ['', 'Account overview'],
+    ['catalogue', 'Collection catalogue'],
+    ['review', 'Book a pickup'],
+    ['addresses', 'Saved addresses'],
+    ['serviceability', 'Service availability'],
+    ['bookings', 'Bookings'],
+    ['activity', 'Activity'],
+    ['profile', 'Edit profile'],
+    ['preferences', 'Language & updates'],
+    ['favourites', 'Favourites'],
+    ['payment-methods', 'Payment methods'],
+    ['notifications', 'Notifications'],
+    ['feedback', 'Share feedback'],
+    ['information/help', 'Help & Support'],
+  ];
   return (
     <div className="account-layout">
       <aside>
         <nav aria-label="Customer account">
-          <a
-            href="/account"
-            aria-current={path === '/account' ? 'page' : undefined}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('/account');
-            }}
-          >
-            Account overview
-          </a>
-          <a
-            href="/account/addresses"
-            aria-current={path === '/account/addresses' ? 'page' : undefined}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('/account/addresses');
-            }}
-          >
-            Saved addresses
-          </a>
-          <a
-            href="/account/serviceability"
-            aria-current={
-              path === '/account/serviceability' ? 'page' : undefined
-            }
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('/account/serviceability');
-            }}
-          >
-            Service availability
-          </a>
-          <a
-            href="/account/activity"
-            aria-current={path === '/account/activity' ? 'page' : undefined}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate('/account/activity');
-            }}
-          >
-            Activity · not activated
-          </a>
+          {links.map(([route, label]) => {
+            const href = route ? `/account/${route}` : '/account';
+            return (
+              <a
+                key={href}
+                href={href}
+                aria-current={path === href ? 'page' : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(href);
+                }}
+              >
+                {label}
+              </a>
+            );
+          })}
         </nav>
         <p className="fine">
           CUSTOMER access
@@ -219,46 +214,10 @@ function Account({
         </p>
       </aside>
       <div>
-        {path === '/account' && (
-          <section className="notice">
-            <h2>A place for your collection journey.</h2>
-            <p className="identity">
-              Customer ID: <span>{owner}</span>
-            </p>
-            <p>
-              Your phone number and profile details are not returned by the
-              verified principal endpoint. No profile editing is available here.
-            </p>
-            <button
-              className="button"
-              onClick={() => navigate('/account/addresses')}
-            >
-              Manage saved addresses →
-            </button>
-          </section>
-        )}
-        {path === '/account/activity' && (
-          <section className="notice">
-            <h2>Activity is not yet activated.</h2>
-            <p>
-              Booking and payment integration will follow in a later increment.
-              This page does not read or invent your booking history.
-            </p>
-          </section>
-        )}
-        {![
-          '/account',
-          '/account/activity',
-          '/account/addresses',
-          '/account/serviceability',
-        ].includes(path) && (
-          <section className="notice">
-            <h2>This account page is unavailable.</h2>
-            <button className="button" onClick={() => navigate('/account')}>
-              Return to account
-            </button>
-          </section>
-        )}
+        {path !== '/account/addresses' &&
+          path !== '/account/serviceability' && (
+            <ProductArea runtime={runtime} path={path} navigate={navigate} />
+          )}
         <div
           hidden={
             path !== '/account/addresses' && path !== '/account/serviceability'
@@ -284,11 +243,17 @@ function AddressManager({
   serviceOnly: boolean;
 }) {
   const state = runtime.session.snapshot();
+  const model = runtime.customer();
   const query = useQuery({
     queryKey: ['customer-addresses', owner, state.epoch],
     queryFn: ({ signal }) => runtime.api.addresses(signal),
   });
   const [selection, setSelection] = useState<string | null>(null);
+  const [addressSearch, setAddressSearch] = useState('');
+  const [distant, setDistant] = useState<{
+    address: Address;
+    distance: number;
+  } | null>(null);
   const [form, setForm] = useState<Address | 'new' | null>(null);
   const [archive, setArchive] = useState<Address | null>(null);
   const [archiveCommand, setArchiveCommand] =
@@ -333,21 +298,41 @@ function AddressManager({
   }
   async function reload() {
     clearCheck();
+    if (model.snapshot().address)
+      model.invalidateAddress(model.snapshot().address!.address_id);
     setSelection(null);
     await query.refetch();
     panelTitle.current?.focus();
   }
-  function select(a: Address) {
+  function select(a: Address, confirmed = false) {
+    const distance = needsAddressConfirmation(
+      a,
+      model.snapshot().currentLocation,
+      model.snapshot().confirmedAddress,
+    );
+    if (distance !== null && !confirmed) {
+      setDistant({ address: a, distance });
+      return;
+    }
+    try {
+      model.selectAddress(a);
+      if (confirmed) model.confirmAddress();
+    } catch {
+      setError('Resolve the prepared booking before changing its address.');
+      return;
+    }
+    setDistant(null);
     clearCheck();
     setSelection(a.address_id);
   }
   async function remove() {
     if (!archive || busy) return;
-    const command = archiveCommand ?? runtime.api.archive(archive);
-    setArchiveCommand(command);
     setBusy(true);
     setError('');
     try {
+      model.editable();
+      const command = archiveCommand ?? runtime.api.archive(archive);
+      setArchiveCommand(command);
       await command.execute();
       setArchiveCommand(null);
       setArchive(null);
@@ -377,6 +362,7 @@ function AddressManager({
       const result = await command.execute();
       if (generation !== checkGeneration.current) return;
       setCheck(result);
+      model.checkContext(result);
       setCheckCommand(null);
       setNow(Date.now());
     } catch (e) {
@@ -409,6 +395,7 @@ function AddressManager({
       );
       if (generation === checkGeneration.current) {
         setCheck(value);
+        model.checkContext(value);
         setNow(Date.now());
       }
     } catch (e) {
@@ -431,6 +418,23 @@ function AddressManager({
   };
   return (
     <>
+      <LocationControls model={model} />
+      {distant && (
+        <section className="notice">
+          <h3>Confirm pickup location</h3>
+          <p>
+            This saved address is approximately {Math.round(distant.distance)}{' '}
+            km from your current location. This is an approximate straight-line
+            distance, not serviceability.
+          </p>
+          <button onClick={() => select(distant.address, true)}>
+            Use this address
+          </button>
+          <button onClick={() => setDistant(null)}>
+            Choose another address
+          </button>
+        </section>
+      )}
       <div className="panel-heading">
         <div>
           <h2 ref={panelTitle} tabIndex={-1}>
@@ -459,60 +463,74 @@ function AddressManager({
           {query.data.length === 0 && (
             <p className="empty">No saved addresses yet. Add one to begin.</p>
           )}
+          <label>
+            Search saved addresses
+            <input
+              value={addressSearch}
+              onChange={(e) => setAddressSearch(e.target.value)}
+              type="search"
+            />
+          </label>
           <div className="address-list">
-            {query.data.map((a) => (
-              <article
-                className={`address-card ${current?.address_id === a.address_id ? 'selected' : ''}`}
-                key={a.address_id}
-              >
-                <div>
-                  <h3>
-                    {a.label ?? 'Saved address'}{' '}
-                    {a.is_default && <span className="badge">Default</span>}
-                  </h3>
-                  <p className="address-text">{a.address}</p>
-                  <p className="fine">
-                    Version {a.version} ·{' '}
-                    {current?.address_id === a.address_id
-                      ? 'Current selection'
-                      : 'Active'}
-                  </p>
-                </div>
-                <div className="actions">
-                  <button
-                    className="button secondary small"
-                    disabled={locked || Boolean(form) || busy}
-                    aria-pressed={current?.address_id === a.address_id}
-                    onClick={() => select(a)}
-                  >
-                    Select address
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={locked || Boolean(form) || busy}
-                    onClick={() => {
-                      clearCheck();
-                      setArchive(null);
-                      setForm(a);
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={locked || Boolean(form) || busy}
-                    onClick={() => {
-                      setError('');
-                      archiveTrigger.current =
-                        document.activeElement as HTMLElement;
-                      setArchive(a);
-                    }}
-                  >
-                    Archive
-                  </button>
-                </div>
-              </article>
-            ))}
+            {query.data
+              .filter((a) =>
+                `${a.label ?? ''} ${a.address}`
+                  .toLocaleLowerCase()
+                  .includes(addressSearch.trim().toLocaleLowerCase()),
+              )
+              .map((a) => (
+                <article
+                  className={`address-card ${current?.address_id === a.address_id ? 'selected' : ''}`}
+                  key={a.address_id}
+                >
+                  <div>
+                    <h3>
+                      {a.label ?? 'Saved address'}{' '}
+                      {a.is_default && <span className="badge">Default</span>}
+                    </h3>
+                    <p className="address-text">{a.address}</p>
+                    <p className="fine">
+                      Version {a.version} ·{' '}
+                      {current?.address_id === a.address_id
+                        ? 'Current selection'
+                        : 'Active'}
+                    </p>
+                  </div>
+                  <div className="actions">
+                    <button
+                      className="button secondary small"
+                      disabled={locked || Boolean(form) || busy}
+                      aria-pressed={current?.address_id === a.address_id}
+                      onClick={() => select(a)}
+                    >
+                      Select address
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={locked || Boolean(form) || busy}
+                      onClick={() => {
+                        clearCheck();
+                        setArchive(null);
+                        setForm(a);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={locked || Boolean(form) || busy}
+                      onClick={() => {
+                        setError('');
+                        archiveTrigger.current =
+                          document.activeElement as HTMLElement;
+                        setArchive(a);
+                      }}
+                    >
+                      Archive
+                    </button>
+                  </div>
+                </article>
+              ))}
           </div>
           {!form && (
             <button
@@ -655,8 +673,8 @@ function AddressManager({
             </p>
           )}
         <p className="fine">
-          Booking, quotation, slot selection and payment are unavailable in this
-          increment.
+          Continue to Book a pickup to choose categories, review the backend
+          price and select a projected slot.
         </p>
       </section>
     </>
@@ -673,6 +691,17 @@ function AddressForm({
 }) {
   const [label, setLabel] = useState(existing?.label ?? '');
   const [address, setAddress] = useState(existing?.address ?? '');
+  const model = runtime.customer();
+  const point = useSyncExternalStore(
+    model.subscribe,
+    model.snapshot,
+  ).currentLocation;
+  const pointSignature = point
+    ? JSON.stringify([address.trim(), point.latitude, point.longitude])
+    : null;
+  const [pointConfirmation, setPointConfirmation] = useState<string | null>(
+    null,
+  );
   const [isDefault, setDefault] = useState(existing?.is_default ?? false);
   const [prepared, setPrepared] = useState<Prepared<Address> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -687,11 +716,17 @@ function AddressForm({
     setError('');
     setBusy(true);
     try {
+      runtime.customer().editable();
       const body = {
         address: address.trim(),
         label: label.trim() || null,
         is_default: isDefault,
-        location: existing?.location ?? null,
+        location:
+          existing && address.trim() !== existing.address.trim()
+            ? null
+            : pointConfirmation === pointSignature && point
+              ? point
+              : (existing?.location ?? null),
       };
       const command =
         prepared ??
@@ -751,6 +786,28 @@ function AddressForm({
               rows={4}
             />
           </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              disabled={
+                !point ||
+                (!!existing && address.trim() !== existing.address.trim())
+              }
+              checked={
+                pointConfirmation === pointSignature && !!pointConfirmation
+              }
+              onChange={(e) =>
+                setPointConfirmation(e.target.checked ? pointSignature : null)
+              }
+            />
+            Attach the explicitly selected location to this exact address
+          </label>
+          {existing && address.trim() !== existing.address.trim() && (
+            <p className="fine">
+              Changing address text removes previous coordinates. Save the text
+              first, then explicitly attach a fresh location in a new edit.
+            </p>
+          )}
           <label className="checkbox">
             <input
               type="checkbox"

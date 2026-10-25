@@ -1134,3 +1134,390 @@ label > select {
     transition: none !important;
   }
 }
+
+/* Customer product: browser layouts with a persistent, owner-scoped draft. */
+.account-page button:not(.button):not(.text-button):not(.catalogue-card) {
+  font: inherit;
+  border: 1px solid #b39b77;
+  background: #fffaf1;
+  padding: 0.65rem 0.9rem;
+  border-radius: 4px;
+  color: #372a19;
+  line-height: 1.45;
+}
+.account-layout > div {
+  min-width: 0;
+}
+.account-layout aside nav {
+  position: sticky;
+  top: 15px;
+}
+.account-layout aside a {
+  padding: 0.6rem;
+  font-size: 0.8rem;
+}
+.product-panel,
+.location-panel {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 1.7rem;
+  background: #fffcf6;
+  margin: 1.3rem 0;
+}
+.product-panel h2,
+.location-panel h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.product-panel h3 {
+  font-size: 1.65rem;
+  margin-bottom: 1rem;
+}
+.product-panel h4 {
+  font-size: 1.15rem;
+  margin: 1rem 0 0.5rem;
+}
+.product-panel p + p {
+  margin-top: 0.65rem;
+}
+.product-panel > button,
+.product-panel form > button {
+  margin-top: 1rem;
+}
+.product-panel form {
+  max-width: 650px;
+}
+.product-panel form label {
+  margin: 1rem 0;
+}
+.product-panel ul {
+  padding-left: 1.3rem;
+}
+.product-panel li {
+  margin: 0.7rem 0;
+  overflow-wrap: anywhere;
+}
+.subheading {
+  margin: 2rem 0 1rem;
+}
+.account-link-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.account-link-grid a {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.account-link-grid a:hover {
+  background: #eee4d3;
+}
+.quick-categories,
+.recommendations {
+  display: flex;
+  gap: 0.7rem;
+  overflow-x: auto;
+  padding: 0.7rem 0 1.1rem;
+  max-width: 100%;
+}
+.quick-categories button,
+.recommendations button {
+  flex: 0 0 auto;
+}
+.quick-categories button[aria-pressed='true'] {
+  background: #e7d2b0;
+}
+.catalogue-group {
+  margin: 2rem 0;
+}
+.catalogue-group h3 {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.catalogue-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.catalogue-card {
+  padding: 0;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: #fffdf8;
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.catalogue-card[aria-checked='true'] {
+  border: 2px solid #a77533;
+}
+.catalogue-card strong,
+.catalogue-card > span,
+.catalogue-card small {
+  padding: 0 1rem;
+  display: block;
+  line-height: 1.6;
+}
+.catalogue-card strong {
+  font:
+    1.25rem Georgia,
+    serif;
+}
+.catalogue-card > span,
+.catalogue-card small {
+  font-size: 0.77rem;
+  color: #5c5143;
+}
+.catalogue-card > span:last-child {
+  padding-bottom: 1rem;
+  font-weight: 600;
+  color: #715025;
+}
+.product-image {
+  height: 130px;
+  max-width: 100%;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+.media-fallback {
+  background: #eee4d3;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  color: #a77533;
+}
+.review-bar {
+  position: sticky;
+  bottom: 0;
+  background: #f8f5eff5;
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.declaration {
+  border-top: 1px solid var(--border);
+  padding: 1.3rem 0;
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.declaration legend {
+  font:
+    1.3rem Georgia,
+    serif;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.declaration p {
+  font-size: 0.85rem;
+}
+.declaration .checkbox {
+  font-weight: 400;
+}
+.price {
+  font:
+    2.4rem Georgia,
+    serif;
+  color: #4f3718;
+  margin: 1rem 0;
+}
+.slot-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.5rem 0;
+}
+.slot-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.83rem;
+}
+.slot-option input {
+  width: auto;
+  margin: 4px 0 0;
+  flex: 0 0 16px;
+}
+.slot-option small {
+  display: block;
+  color: #6b6256;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+.journey-timeline {
+  padding-left: 1.5rem;
+}
+.journey-timeline li {
+  padding-bottom: 1rem;
+}
+.journey-timeline strong,
+.journey-timeline span {
+  display: block;
+}
+.journey-timeline span {
+  font-size: 0.85rem;
+  color: #62594e;
+}
+.segmented {
+  display: flex;
+  margin: 1rem 0;
+  gap: 0.7rem;
+}
+.segmented [aria-selected='true'] {
+  background: #e7d2b0 !important;
+  font-weight: 600 !important;
+}
+.collection-card h3 {
+  margin-top: 0.8rem;
+}
+.notification-entry {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+.notification-entry p {
+  font-size: 0.86rem;
+}
+.auth-form {
+  max-width: 520px;
+  padding: 1.8rem 0;
+}
+.auth-form h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.auth-form fieldset {
+  gap: 1rem;
+}
+.auth-form .fine {
+  margin-top: 1.4rem;
+}
+.auth-form > button {
+  margin-top: 1rem;
+}
+.fixture-controls {
+  margin: 2rem 0;
+  border: 1px dashed #897047;
+  padding: 1rem;
+  background: #eee6d3;
+  font-size: 0.8rem;
+}
+.fixture-controls h3 {
+  font-size: 1.2rem;
+}
+.fixture-controls label {
+  font-size: 0.8rem;
+  margin: 0.7rem 0;
+}
+.fixture-controls label > input[type='checkbox'] {
+  width: auto;
+  margin: 0 0.6rem 0 0;
+}
+.fixture-controls button {
+  margin: 0.3rem !important;
+}
+.browser-map {
+  height: 280px;
+  width: 100%;
+  z-index: 0;
+  margin: 1rem 0;
+}
+.location-panel label {
+  flex: 1;
+  min-width: 170px;
+}
+.location-panel p {
+  font-size: 0.85rem;
+}
+.location-panel .actions {
+  align-items: flex-end;
+}
+.product-panel .error p {
+  color: inherit;
+}
+@media (max-width: 1050px) {
+  .catalogue-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .slot-options {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .account-layout aside {
+    overflow: hidden;
+    min-width: 0;
+  }
+  .account-layout aside nav {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    grid-template-columns: none;
+    overflow-x: auto;
+    position: static;
+    margin-bottom: 0;
+    padding-bottom: 0.6rem;
+  }
+  .account-layout aside a {
+    white-space: nowrap;
+  }
+  .product-panel,
+  .location-panel {
+    padding: 1.2rem;
+  }
+  .catalogue-cards {
+    gap: 0.7rem;
+  }
+  .catalogue-card strong {
+    font-size: 1.12rem;
+  }
+  .catalogue-card strong,
+  .catalogue-card > span,
+  .catalogue-card small {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+  .product-image {
+    height: 105px;
+  }
+  .review-bar {
+    padding: 1rem 0;
+    align-items: center;
+    font-size: 0.78rem;
+  }
+  .review-bar .button {
+    max-width: 65%;
+  }
+  .account-link-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+  .account-link-grid a {
+    font-size: 0.78rem;
+    padding: 0.8rem;
+  }
+  .declaration legend {
+    font-size: 1.2rem;
+  }
+  .fixture-controls button {
+    font-size: 0.75rem !important;
+  }
+  .slot-options {
+    grid-template-columns: 1fr;
+  }
+  .auth-form h2 {
+    font-size: 1.8rem;
+  }
+}

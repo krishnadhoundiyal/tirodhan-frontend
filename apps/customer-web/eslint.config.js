@@ -29,6 +29,31 @@ export default tseslint.config(
         'sessionStorage',
         'indexedDB',
       ],
+      'no-restricted-properties': [
+        'error',
+        ...['globalThis', 'window', 'self'].flatMap((object) =>
+          ['localStorage', 'sessionStorage'].map((property) => ({
+            object,
+            property,
+            message:
+              'Browser credentials and personal-data storage is forbidden.',
+          })),
+        ),
+      ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/platform/recovery.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'MemberExpression[property.name="indexedDB"]',
+          message:
+            'IndexedDB is restricted to the audited encrypted recovery boundary.',
+        },
+      ],
     },
   },
 );

@@ -1,4 +1,5 @@
 import { CustomerSession, type WebSessionAdapter } from './auth/session';
+import { productFixture } from './fixture-product';
 import { createRuntime } from './runtime';
 import type { Address, Context } from './api/contracts';
 
@@ -14,6 +15,7 @@ const g = () => ({
   user_id: fixtureOwner,
 });
 export function fixtureRuntime() {
+  const product = productFixture(fixtureOwner);
   let rows: Address[] = [
     {
       address_id: fixtureAddress,
@@ -46,6 +48,8 @@ export function fixtureRuntime() {
       }) as Response;
     if (path === '/v1/auth/me')
       return response({ user_id: fixtureOwner, roles: ['CUSTOMER'] });
+    const projected = await product.handle(input, init, contexts);
+    if (projected) return projected;
     const method = init?.method;
     if (scenario === 'UNAVAILABLE' && path.includes('serviceability'))
       return response({}, 503);
@@ -157,8 +161,70 @@ export function fixtureRuntime() {
     'https://customer-fixture.invalid',
     fetcher,
   );
-  const runtime = createRuntime(session);
+  const runtime = createRuntime(session, {
+    memoryRecovery: true,
+    checkout: product.sdk,
+    mediaResolver: () => '/collection-placeholder.svg',
+    capabilities: new Set([
+      'principal',
+      'catalogue',
+      'slots',
+      'weightPricing',
+      'collections',
+      'recommendations',
+      'payment',
+      'checkout',
+      'refunds',
+      'profile',
+      'preferences',
+      'favourites',
+      'notifications',
+      'paymentMethods',
+      'feedback',
+      'content',
+      'cancellationCompensation',
+    ]),
+  });
   runtime.development = {
+    financialControls: (
+      <section className="fixture-controls">
+        <h3>Development backend controls</h3>
+        <label>
+          <input
+            type="checkbox"
+            onChange={(e) => product.setCallbackOnly(e.target.checked)}
+          />
+          Provider callback without backend confirmation
+        </label>
+        <button onClick={() => product.settle()}>
+          Confirm payment in fixture backend
+        </button>
+        <button onClick={() => product.handover()}>
+          Validate fixture handover
+        </button>
+        <button onClick={() => product.completeRefund()}>
+          Complete fixture refund
+        </button>
+        <button onClick={() => product.changePolicy()}>
+          Change fixture pricing revision
+        </button>
+        <label>
+          Command scenario
+          <select onChange={(e) => product.setScenario(e.target.value)}>
+            {[
+              'NORMAL',
+              'LOST_HOLD',
+              'LOST_BOOKING',
+              'LOST_ATTEMPT',
+              'HOLD_CONFLICT',
+              'PLANNING_RACE',
+            ].map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </select>
+        </label>
+      </section>
+    ),
     banner: (
       <div className="fixture-banner" role="status">
         DEVELOPMENT FIXTURE · Simulated customer and addresses · No live
@@ -193,5 +259,5 @@ export function fixtureRuntime() {
       </label>
     ),
   };
-  return runtime;
+  return Object.assign(runtime, { fixtureProduct: product });
 }
