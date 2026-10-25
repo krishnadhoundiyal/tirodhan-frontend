@@ -44,11 +44,14 @@ of a retried call is not evidence of completed-backend-login replay.
 
 Access JWTs live only in ManagerSession private memory and are absent from
 public state, URLs, storage, logs and telemetry. Business transport accepts only
-allowlisted GET manager reads; it uses an exact HTTPS origin, credentials: omit,
+allowlisted GET manager reads and OW-P0-02 branded POST commands; it uses an exact HTTPS origin, credentials: omit,
 no-store, no-referrer and redirect: error. Admission requires fresh `/v1/auth/me`
 with current MANAGER role, matching the issued user_id. Roles are never decoded
 from JWTs or asserted in requests. Coordinated 401 refresh rechecks principal,
-retries each read at most once, and rejects account changes; 403 never refreshes.
+retries each request at most once with its exact body/identity, and rejects account changes; 403 never refreshes.
+Uncertain mutation outcomes require explicit manager confirmation before an
+identical command retry; no timer resubmits a business decision. Logout also
+clears the session-memory command journal and cancels selected reconciliation.
 Logout immediately advances the ownership epoch, aborts reads, clears token,
 principal and query cache, and removes the authenticated shell/selections.
 Unconfirmed remote logout blocks further sign-in until logout retry succeeds.

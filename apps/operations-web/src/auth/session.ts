@@ -1,5 +1,11 @@
 import { principal, type Principal } from '../api/contracts';
 import { isManagerRead } from '../api/reads';
+import {
+  CommandError,
+  conflictCode,
+  isCommand,
+  type Command,
+} from '../api/commands';
 import { integer, object, text, uuid } from '../api/schema';
 
 export interface WebSessionAdapter {
@@ -201,11 +207,16 @@ export class ManagerSession {
       external?.removeEventListener('abort', cancel);
     }
   }
-  async #http(path: string, token: string, external?: AbortSignal) {
+  async #http(
+    path: string,
+    token: string,
+    external?: AbortSignal,
+    command?: Command,
+  ) {
     const epoch = this.#snapshot.epoch;
     const result = await this.#bounded(async (signal) => {
       const response = await this.fetcher(this.origin + path, {
-        method: 'GET',
+        method: command ? 'POST' : 'GET',
         credentials: 'omit',
         cache: 'no-store',
         redirect: 'error',
@@ -213,12 +224,17 @@ export class ManagerSession {
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
+          ...(command ? { 'Content-Type': 'application/json' } : {}),
         },
+        ...(command ? { body: command.payload } : {}),
         signal,
       });
       return {
         status: response.status,
-        body: response.ok ? ((await response.json()) as unknown) : null,
+        body:
+          response.ok || (command && response.status === 409)
+            ? ((await response.json()) as unknown)
+            : null,
       };
     }, external);
     this.#current(epoch);
@@ -328,6 +344,37 @@ export class ManagerSession {
   }
   async read(path: string, signal?: AbortSignal): Promise<unknown> {
     if (!isManagerRead(path)) throw new ReadError('forbidden');
+    const result = await this.#authorized(path, signal);
+    if (result.status === 404) throw new ReadError('notFound');
+    if (result.status !== 200) throw new ReadError('unavailable');
+    return result.body;
+  }
+  async execute(command: Command, signal?: AbortSignal) {
+    if (!isCommand(command)) throw new ReadError('forbidden');
+    try {
+      const result = await this.#authorized(command.path, signal, command);
+      if (result.status === 409)
+        throw new CommandError('conflict', conflictCode(result.body));
+      if (result.status === 404 || result.status === 422)
+        throw new CommandError('rejected');
+      if (result.status !== command.expectedStatus)
+        throw new CommandError('uncertain');
+      try {
+        return command.parse(result.body);
+      } catch {
+        throw new CommandError('uncertain');
+      }
+    } catch (error) {
+      if (error instanceof CommandError) throw error;
+      if (
+        error instanceof ReadError &&
+        ['forbidden', 'unauthorized', 'cancelled'].includes(error.kind)
+      )
+        throw error;
+      throw new CommandError('uncertain');
+    }
+  }
+  async #authorized(path: string, signal?: AbortSignal, command?: Command) {
     this.#available();
     if (
       this.#snapshot.phase !== 'ready' ||
@@ -344,12 +391,12 @@ export class ManagerSession {
     }
     this.#current(epoch);
     const token = this.#token!;
-    let result = await this.#http(path, token, signal);
+    let result = await this.#http(path, token, signal, command);
     if (result.status === 401 && !refreshed) {
       if (this.#token === token)
         await this.#coordinateRefresh(epoch, owner, signal);
       this.#current(epoch);
-      result = await this.#http(path, this.#token!, signal);
+      result = await this.#http(path, this.#token!, signal, command);
     }
     if (result.status === 401 || result.status === 403) {
       this.#clear(
@@ -360,10 +407,8 @@ export class ManagerSession {
       );
       throw new ReadError(result.status === 403 ? 'forbidden' : 'unauthorized');
     }
-    if (result.status === 404) throw new ReadError('notFound');
-    if (result.status !== 200) throw new ReadError('unavailable');
     this.#current(epoch);
-    return result.body;
+    return result;
   }
   async logout() {
     if (this.#logout) return this.#logout;

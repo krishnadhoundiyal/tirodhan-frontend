@@ -10,7 +10,9 @@ on:
       - 'turbo.json'
       - '.github/workflows/operations-web.yml'
   push:
-    branches: ['codex/operations-web-foundation']
+    branches:
+      - 'codex/operations-web-foundation'
+      - 'codex/operations-web-manager-commands'
     paths:
       - 'apps/operations-web/**'
       - 'docs/OPERATIONS_WEB_*.md'

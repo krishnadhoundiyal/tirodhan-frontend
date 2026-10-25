@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { reads } from './api/reads';
 import type { Runtime } from './runtime';
 import {
+  PendingAssignment,
+  FailureAction,
+  CandidateActions,
+  RecoveryInterventions,
+  LineageReassignment,
+} from './command-ui';
+import {
   Gap,
   Lookup,
   Pager,
@@ -227,6 +234,7 @@ export function Riders({
               ) : (
                 <p>No open failure incidents returned.</p>
               )}
+              <FailureAction runtime={runtime} state={data} />
             </>
           )}
         </ReadPanel>
@@ -254,32 +262,35 @@ export function Assignments({ runtime }: ScreenProps) {
         spec={reads.groups()}
       >
         {(rows) => (
-          <Table
-            caption="Unassigned V1 groups · slot and group ID order"
-            columns={[
-              'Group / batch',
-              'Planning mode',
-              'Cell',
-              'Slot (IST)',
-              'Pickups',
-              'Created',
-            ]}
-            rows={rows.map((row) => [
-              <>
-                <Reference value={row.collection_group_id} />
-                <Reference value={row.planning_batch_id} />
-              </>,
-              <Status value={row.planning_mode} />,
-              row.cell_id,
-              <>
-                <Time value={row.slot_start} />
-                <br />
-                <Time value={row.slot_end} />
-              </>,
-              row.pickup_count,
-              <Time value={row.created_at} />,
-            ])}
-          />
+          <>
+            <Table
+              caption="Unassigned V1 groups · slot and group ID order"
+              columns={[
+                'Group / batch',
+                'Planning mode',
+                'Cell',
+                'Slot (IST)',
+                'Pickups',
+                'Created',
+              ]}
+              rows={rows.map((row) => [
+                <>
+                  <Reference value={row.collection_group_id} />
+                  <Reference value={row.planning_batch_id} />
+                </>,
+                <Status value={row.planning_mode} />,
+                row.cell_id,
+                <>
+                  <Time value={row.slot_start} />
+                  <br />
+                  <Time value={row.slot_end} />
+                </>,
+                row.pickup_count,
+                <Time value={row.created_at} />,
+              ])}
+            />
+            <PendingAssignment runtime={runtime} groups={rows} />
+          </>
         )}
       </ReadPanel>
       <Gap title="Offered and active assignments">
@@ -699,10 +710,7 @@ export function Recovery({ runtime }: ScreenProps) {
                       <Reference value={row.region_id} />
                     </>,
                     <Status value={row.resource_kind} />,
-                    <>
-                      {yes(row.selectable)} · no selection action in this
-                      increment
-                    </>,
+                    yes(row.selectable),
                   ])}
                 />
                 <Pager
@@ -718,6 +726,7 @@ export function Recovery({ runtime }: ScreenProps) {
                   client eligibility evaluation or candidate reordering is
                   performed.
                 </p>
+                <CandidateActions runtime={runtime} detail={data} />
               </>
             )}
           </ReadPanel>
@@ -765,7 +774,8 @@ export function Recovery({ runtime }: ScreenProps) {
       <Gap title="Recovery acceptance is asynchronous">
         A rider failure is an event. Backend workers own recommendation,
         activation and receipts. HTTP 202 would only acknowledge acceptance;
-        this increment issues no such command and uses manual refresh only.
+        acceptance does not prove completion. Use session command records for
+        bounded selected-resource reconciliation or refresh manually.
       </Gap>
     </>
   );
@@ -913,6 +923,7 @@ export function Incidents({ runtime }: ScreenProps) {
                         setAssignmentAfter(data.assignment_next_cursor);
                     }}
                   />
+                  <RecoveryInterventions runtime={runtime} detail={data} />
                 </>
               )}
             </ReadPanel>
@@ -1010,6 +1021,7 @@ function BookingAssignments({ runtime }: ScreenProps) {
                 Release timestamps and states are shown without inventing an
                 assignment source or collection-request completion.
               </p>
+              <LineageReassignment runtime={runtime} lineage={data} />
             </>
           )}
         </ReadPanel>

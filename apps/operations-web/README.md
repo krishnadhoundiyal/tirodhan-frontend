@@ -1,6 +1,6 @@
-# Tirodhan Operations Web · OW-P0-01
+# Tirodhan Operations Web · OW-P0-02
 
-Independent React/TypeScript/Vite manager read console in the pnpm monorepo.
+Independent React/TypeScript/Vite manager console in the pnpm monorepo.
 No source imports from Customer or Rider apps, shared-package scaffolds, server
 component layer, BFF, browser database, WebSocket or service worker.
 
@@ -58,7 +58,9 @@ activation/custody fields and known-booking assignment lineage, not collection c
 Expand “Fixture reference UUIDs” to inspect known route, region, replacement and
 failure references. “Read sample route” navigates to a read view only. These
 references and roles grant no real permission. No global network fetch, OTP or
-operational command is used by the fixture runtime.
+real operational transport is used by the fixture runtime. Command buttons
+simulate in-memory decisions with separate confirmation. The additional recovery
+options and ATTENTION scenarios are illustrative, never backend acceptance.
 
 ## Data and lifecycle rules
 
@@ -67,14 +69,32 @@ operational command is used by the fixture runtime.
 - Preserve backend list order and each V2 cursor independently. Filters apply
   only to the loaded slice. There is no unbounded per-rider/route fanout.
 - Route lookups require UUIDs; no global route list exists. Region identities come from a separate configuration-history index.
-- Replacement candidates retain backend ranks; selection is not implemented.
+- Replacement candidates retain backend ranks; selection uses exact candidate,
+  source, region, route-version and incident-coverage evidence.
   Approval, activation, acknowledgment and physical custody remain distinct.
-- No live assignment, reassign, failure, recovery, policy, planning, completion
-  or handover mutation button or business POST transport exists.
-- Reads run on navigation, selection and manual refresh, with no polling or
+- V1 assignment/reassignment and V2 failure, incident allocation, retry and
+  failed-service resolution use allowlisted session POST commands. Production
+  authentication remains gated. No direct planning, route activation, policy,
+  collection completion or custody-transfer command is exposed.
+- Decisions require review and separate confirmation. Session-memory records
+  preserve exact serialized bodies/identities across navigation and uncertainty.
+  No timer retries a command. Uncertain records cannot be closed or replaced
+  with changed intent for the same target. After the 15-minute local submit/
+  retry window, reconcile and investigate. This is not a server TTL guarantee.
+- At most 50 command records are retained, cleared on logout/account change and
+  lost on page reload. Inspect backend state after a lost browser session;
+  no credential or command journal is put in browser storage.
+- HTTP 202 means accepted only. Returned resources and parent incidents remain
+  distinct for retry/resolution. Actual projections show activation, revision,
+  receipt and custody fields without a synthetic recovery-success state.
+- Reads run on navigation, selection and manual refresh, with no permanent polling or
   focus/reconnect auto-refresh. Each transport/adapter wait is bounded; queries
   run through the same finite error path when offline rather than pausing
   indefinitely. A failed refresh hides prior data instead of labelling it current.
+- User-started reconciliation reads one selected resource at most six times,
+  five seconds apart with a hard 30-second deadline. It stops on read errors,
+  verified terminal projections, explicit stop, page hiding, navigation,
+  unmount and session change. Backend workers own asynchronous processing.
 - Access JWT is private session memory. Query keys include an ownership epoch;
   logout/account changes abort requests, clear query state and unmount all
   authenticated selections. Refresh grants cannot silently change identity.
@@ -86,6 +106,10 @@ Visual treatment uses app-local CSS and system fonts, semantic navigation,
 labelled forms, captions/column headers, textual statuses, focus styles and a
 skip link. Tables scroll within their region on narrow screens. No remote font,
 map or image service is needed.
+
+See `docs/OPERATIONS_WEB_MUTATION_CONTRACT_MATRIX.md` for command contracts,
+V1/V2 boundaries and replay rules. The OW-P0-01 read matrix/report are historical;
+OW-P0-02 extends them without changing the authentication POC requirements.
 
 ## Build and CI
 
