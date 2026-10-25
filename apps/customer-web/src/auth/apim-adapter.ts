@@ -1,5 +1,9 @@
 import { ContractError, integer, object, text, uuid } from './schema';
-import { unavailableAdapter, type WebSessionAdapter } from './session';
+import {
+  unavailableAdapter,
+  NoRefreshSessionError,
+  type WebSessionAdapter,
+} from './session';
 
 export interface ApimSessionConfiguration {
   approved: boolean;
@@ -230,6 +234,33 @@ export function createApimWebSessionAdapter(
       throw new WebSessionError('invalid');
     const expected =
       operation === 'start' ? 202 : operation === 'logout' ? 204 : 200;
+    if (operation === 'refresh' && response.status === 401) {
+      // Exact sanitized envelopes from the existing APIM admission/shape policy.
+      // Unknown/HTML/truncated 401s are not proof of absent browser credentials.
+      let absent = false;
+      try {
+        if (
+          response.headers
+            ?.get('Content-Type')
+            ?.split(';')[0]
+            ?.trim()
+            .toLowerCase() === 'application/json'
+        ) {
+          const text = await response.text();
+          if (text.length <= 20000) {
+            const error: unknown = JSON.parse(text);
+            exactKeys(error, ['error']);
+            absent = [
+              'AUTHENTICATION_REQUIRED',
+              'AUTHENTICATION_UNAVAILABLE',
+            ].includes((error as { error: string }).error);
+          }
+        }
+      } catch {
+        /* No raw error, credential or body retained. */
+      }
+      if (absent) throw new NoRefreshSessionError();
+    }
     if (response.status !== expected)
       throw new WebSessionError(
         'rejected',
@@ -328,9 +359,22 @@ export function createApimWebSessionAdapter(
       if (needsLogout) throw new WebSessionError('logoutRequired');
       return cookie(async (cancelled) => {
         if (needsLogout) throw new WebSessionError('logoutRequired');
-        const result = await http('refresh', {});
-        if (cancelled()) throw new WebSessionError('cancelled');
-        return result;
+        try {
+          const result = await http('refresh', {});
+          if (cancelled()) throw new WebSessionError('cancelled');
+          return result;
+        } catch (error) {
+          if (
+            !needsLogout &&
+            !cancelled() &&
+            error instanceof NoRefreshSessionError
+          )
+            throw error;
+          needsLogout = true;
+          if (error instanceof NoRefreshSessionError)
+            throw new WebSessionError('uncertain');
+          throw error;
+        }
       }, signal);
     },
     async logout(signal) {

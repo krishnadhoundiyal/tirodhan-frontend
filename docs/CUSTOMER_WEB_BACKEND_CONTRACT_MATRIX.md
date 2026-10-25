@@ -46,6 +46,8 @@ These are existing Mobile client proposals, **not approved server contracts**. B
 | notifications  | GET `/v1/customer/notifications?limit=20[&cursor=...]`; owned collection history, cursor expiry/dedup.                                                                                                                                                                                                                                   |
 | push           | Native push-device proposal is absent. Browser PushSubscription/VAPID needs a separately approved backend contract; never reuse native token DTOs. Service worker, explicit permission/subscription, registration/revocation port, owner fencing and owned-read navigation are implemented/tested with an injected port. No guessed URL. |
 
+Raw preparation states are CREATED, PENDING, INITIATION_UNCERTAIN, FAILED and SUCCEEDED; PROCESSING and CONFIRMING belong only to the independent customer projection. A journal rejectedAttemptId records which authoritative failed order authorized a replacement key, preventing repeated key rotation after another lost preparation or stale read. See [review closure](CUSTOMER_WEB_REVIEW_CLOSURE_REPORT.md).
+
 ## Activation / error contracts
 
 Raw Phase 1O auth routes remain backend authority but are never called directly: raw verify/refresh expose refresh credentials. App-local APIM adapter implements challenge, stripped four-field access grant, cookie refresh and confirmed logout with configuration/origin/CSRF checks and cross-tab serialization. Production still composes unavailableAdapter/null origin. Issues #13/#14 and actual gateway/browser acceptance remain blocking.

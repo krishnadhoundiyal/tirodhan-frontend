@@ -7,6 +7,8 @@ import {
 const id = (n: number) =>
   '00000000-0000-4000-8000-' + String(n).padStart(12, '0');
 import { grantValue as access, deferred, response } from './helpers';
+import { owner } from './helpers';
+import { CustomerSession, NoRefreshSessionError } from '../auth/session';
 const config = (): ApimSessionConfiguration => ({
   approved: true,
   approvalReference: 'LOCAL TEST ONLY - NOT APPROVED',
@@ -199,23 +201,30 @@ test.each([
     kind: 'invalid',
   });
 });
-test('credential-bearing redirects and non-JSON responses are rejected', async () => {
-  const { adapter, fetcher } = harness();
-  fetcher.mockResolvedValueOnce({
-    ...json(access()),
-    redirected: true,
-  } as Response);
-  await expect(adapter.refresh(signal())).rejects.toMatchObject({
-    kind: 'invalid',
-  });
-  fetcher.mockResolvedValueOnce({
-    ...json(access()),
-    headers: new Headers({ 'Content-Type': 'text/html' }),
-  } as Response);
-  await expect(adapter.refresh(signal())).rejects.toMatchObject({
-    kind: 'invalid',
-  });
-});
+test.each(['redirect', 'non-JSON'])(
+  'credential-bearing %s responses are rejected and require cleanup',
+  async (kind) => {
+    const { adapter, fetcher } = harness();
+    fetcher.mockResolvedValueOnce(
+      kind === 'redirect'
+        ? ({
+            ...json(access()),
+            redirected: true,
+          } as Response)
+        : ({
+            ...json(access()),
+            headers: new Headers({ 'Content-Type': 'text/html' }),
+          } as Response),
+    );
+    await expect(adapter.refresh(signal())).rejects.toMatchObject({
+      kind: 'invalid',
+    });
+    await expect(adapter.refresh(signal())).rejects.toMatchObject({
+      kind: 'logoutRequired',
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
 test('lost verify requires confirmed logout and a fresh OTP; no unknown cookie is used to attribute login', async () => {
   const { adapter, fetcher } = harness();
   fetcher
@@ -314,4 +323,154 @@ test('approved transport configuration and OTP identities are snapshotted before
     'https://gateway.local-test.invalid/test/verify',
   );
   expect(fetcher.mock.calls[1][1]?.body).toBe(JSON.stringify(verifyBody));
+});
+
+test('settled refresh 401 means no browser session and permits OTP without an explicit sign-out detour', async () => {
+  const { adapter, fetcher } = harness();
+  fetcher.mockImplementation(async (input) =>
+    String(input).endsWith('/refresh')
+      ? json({ error: 'AUTHENTICATION_REQUIRED' }, 401)
+      : String(input).endsWith('/start')
+        ? json({ challenge_reference: id(80) }, 202)
+        : String(input).endsWith('/logout')
+          ? json(null, 204)
+          : String(input).endsWith('/me')
+            ? json({ user_id: owner, roles: ['CUSTOMER'] })
+            : json(access()),
+  );
+  const session = new CustomerSession(adapter, config().gatewayOrigin, fetcher);
+  await expect(session.resume()).resolves.toBeUndefined();
+  expect(session.snapshot()).toMatchObject({
+    phase: 'signedOut',
+    logoutUnconfirmed: false,
+    cleanupPending: false,
+  });
+  expect(
+    fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname),
+  ).toEqual(['/test/refresh']);
+  const challenge = await session.startOtp('+919999999999');
+  await session.login(challenge, '123456');
+  expect(session.snapshot().phase).toBe('ready');
+  expect(
+    fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname),
+  ).toEqual([
+    '/test/refresh',
+    '/test/start',
+    '/test/logout',
+    '/test/verify',
+    '/v1/auth/me',
+  ]);
+  await session.logout();
+});
+test('only the authoritative adapter refresh 401 produces the absence marker', async () => {
+  const { adapter, fetcher } = harness();
+  fetcher.mockResolvedValue(json({ error: 'AUTHENTICATION_REQUIRED' }, 401));
+  await expect(adapter.refresh(signal())).rejects.toBeInstanceOf(
+    NoRefreshSessionError,
+  );
+  fetcher.mockResolvedValue(json({ challenge_reference: id(80) }, 202));
+  await expect(
+    adapter.startOtp(
+      { client_request_id: id(90), phone: '+919999999999' },
+      signal(),
+    ),
+  ).resolves.toMatchObject({ challenge_reference: id(80) });
+});
+test.each([403, 409, 429, 500, 502, 503, 504])(
+  'refresh HTTP %s remains unconfirmed and cannot reopen OTP',
+  async (status) => {
+    const { adapter, fetcher } = harness();
+    fetcher.mockResolvedValue(json({}, status));
+    const session = new CustomerSession(
+      adapter,
+      config().gatewayOrigin,
+      fetcher,
+    );
+    await expect(session.resume()).rejects.toThrow();
+    expect(session.snapshot()).toMatchObject({
+      phase: 'error',
+      logoutUnconfirmed: true,
+    });
+    await expect(session.startOtp('+919999999999')).rejects.toThrow();
+    await expect(
+      adapter.startOtp(
+        { client_request_id: id(90), phone: '+919999999999' },
+        signal(),
+      ),
+    ).rejects.toMatchObject({ kind: 'logoutRequired' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+test('a principal 401 after a successful cookie refresh is not classified as absent refresh session', async () => {
+  const { adapter, fetcher } = harness();
+  fetcher.mockImplementation(async (input) =>
+    String(input).endsWith('/me') ? json({}, 401) : json(access()),
+  );
+  const session = new CustomerSession(adapter, config().gatewayOrigin, fetcher);
+  await expect(session.resume()).rejects.toThrow();
+  expect(session.snapshot()).toMatchObject({
+    phase: 'error',
+    logoutUnconfirmed: true,
+  });
+  await expect(session.startOtp('+919999999999')).rejects.toThrow();
+});
+test('a refresh timeout followed by a late 401 cannot undo ambiguity or bypass ordered logout', async () => {
+  const { adapter, fetcher } = harness(20);
+  const late = deferred<Response>();
+  fetcher.mockReturnValueOnce(late.promise);
+  const session = new CustomerSession(adapter, config().gatewayOrigin, fetcher);
+  await expect(session.resume()).rejects.toMatchObject({ kind: 'uncertain' });
+  late.resolve(json({ error: 'AUTHENTICATION_REQUIRED' }, 401));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(session.snapshot().logoutUnconfirmed).toBe(true);
+  await expect(adapter.refresh(signal())).rejects.toMatchObject({
+    kind: 'logoutRequired',
+  });
+  await expect(session.startOtp('+919999999999')).rejects.toThrow();
+  await session.logout();
+  expect(session.snapshot().logoutUnconfirmed).toBe(false);
+  await session.startOtp('+919999999999');
+});
+
+test.each(['AUTHENTICATION_REQUIRED', 'AUTHENTICATION_UNAVAILABLE'])(
+  'approved APIM refresh rejection envelope %s is authoritative only when settled',
+  async (error) => {
+    const { adapter, fetcher } = harness();
+    fetcher.mockResolvedValue(json({ error }, 401));
+    await expect(adapter.refresh(signal())).rejects.toBeInstanceOf(
+      NoRefreshSessionError,
+    );
+  },
+);
+test.each([
+  {},
+  { error: 'UNKNOWN' },
+  {
+    error: 'AUTHENTICATION_REQUIRED',
+    refresh_token: 'synthetic-disallowed-extra',
+  },
+])(
+  'unrecognized or credential-bearing refresh 401 cannot be interpreted as absent session',
+  async (body) => {
+    const { adapter, fetcher } = harness();
+    fetcher.mockResolvedValue(json(body, 401));
+    const session = new CustomerSession(
+      adapter,
+      config().gatewayOrigin,
+      fetcher,
+    );
+    await expect(session.resume()).rejects.toThrow();
+    expect(session.snapshot().logoutUnconfirmed).toBe(true);
+  },
+);
+test('a non-JSON refresh 401 cannot clear logout uncertainty', async () => {
+  const { adapter, fetcher } = harness();
+  fetcher.mockResolvedValue({
+    ...json({ error: 'AUTHENTICATION_REQUIRED' }, 401),
+    headers: new Headers({ 'Content-Type': 'text/html' }),
+  } as Response);
+  const session = new CustomerSession(adapter, config().gatewayOrigin, fetcher);
+  await expect(session.resume()).rejects.toThrow();
+  expect(session.snapshot().logoutUnconfirmed).toBe(true);
 });

@@ -2,6 +2,8 @@
 
 25 October 2026, Asia/Calcutta. **The former booking/payment/functionality exclusions are withdrawn.** Customer Web now implements the complete current Customer Mobile business journey behind explicit security and backend capability gates. This is implementation/fixture parity evidence, not production authentication, provider payment or deployment acceptance.
 
+Review corrections dated 26 October and current validation/deployment gates are recorded in [CUSTOMER_WEB_REVIEW_CLOSURE_REPORT.md](CUSTOMER_WEB_REVIEW_CLOSURE_REPORT.md). The 212-test/initial CI evidence below is the historical parity baseline, not the follow-up result.
+
 ## Delivery and reference
 
 - Existing branch `codex/customer-web-foundation`; completed foundation commit `f4b76cf0f600d46d7d7bfa15072c964825f31ad8` retained. No merge, branch recreation or PR creation.

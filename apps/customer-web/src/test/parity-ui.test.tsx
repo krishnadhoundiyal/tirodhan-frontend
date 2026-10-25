@@ -10,6 +10,7 @@ import { fixtureRuntime } from '../fixture';
 import { createRuntime } from '../runtime';
 import { ApiError } from '../parity/api/errors';
 import { AuthForm } from '../features/auth-form';
+import { NoRefreshSessionError } from '../auth/session';
 import type { CollectionSummary } from '../parity/api/customer-contracts';
 import {
   harness,
@@ -466,4 +467,29 @@ test('confirmed gateway logout with failed auxiliary cleanup offers local retry 
   button('Retry local cleanup');
   await screen.findByRole('button', { name: 'Enter development customer' });
   expect(r.session.snapshot().cleanupPending).toBe(false);
+});
+
+test('authoritatively absent cookie session returns the browser UI to OTP without requiring sign-out', async () => {
+  history.replaceState(null, '', '/account');
+  const h = harness();
+  jest
+    .mocked(h.adapter.refresh)
+    .mockRejectedValueOnce(new NoRefreshSessionError());
+  const r = createRuntime(h.session, { memoryRecovery: true });
+  render(<CustomerApp runtime={r} />);
+  button('Restore secure browser session');
+  await waitFor(() => expect(h.session.snapshot().phase).toBe('signedOut'));
+  expect(h.session.snapshot().logoutUnconfirmed).toBe(false);
+  expect(screen.queryByRole('button', { name: 'Retry sign-out' })).toBeNull();
+  expect(
+    (screen.getByLabelText('Mobile number · +91') as HTMLInputElement).closest(
+      'fieldset',
+    )?.disabled,
+  ).toBe(false);
+  fireEvent.change(screen.getByLabelText('Mobile number · +91'), {
+    target: { value: '9999999999' },
+  });
+  button('Send verification code');
+  await screen.findByLabelText('Six digit verification code');
+  expect(h.adapter.logout).not.toHaveBeenCalled();
 });

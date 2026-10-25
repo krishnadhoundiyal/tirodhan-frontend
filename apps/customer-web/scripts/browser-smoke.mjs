@@ -268,6 +268,33 @@ try {
       ),
     );
     assert.equal(protectedNetwork.length, 0);
+    const detailPath =
+      '/account/collections/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const direct = await fetch(origin + detailPath);
+    assert.equal(direct.status, 200);
+    const privateEntry = await direct.text();
+    assert(!privateEntry.includes('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'));
+    assert(
+      !privateEntry.includes('access_token') &&
+        !privateEntry.includes('Example house'),
+    );
+    await navigate(detailPath);
+    await until(
+      "document.body.textContent.includes('Online booking is not yet activated.')",
+    );
+    assert.equal(await evaluate('document.title'), 'Your account | Tirodhan');
+    await evaluate("document.documentElement.dataset.beforeReload='yes'");
+    await call('Page.reload', { ignoreCache: true });
+    await until(
+      "document.readyState==='complete'&&!document.documentElement.dataset.beforeReload&&document.body.textContent.includes('Online booking is not yet activated.')",
+    );
+    assert.equal(await evaluate('location.pathname'), detailPath);
+    assert(
+      await evaluate(
+        "document.querySelector('meta[name=robots]').content.includes('noindex')",
+      ),
+    );
+    assert.equal(protectedNetwork.length, 0);
     await navigate('/');
     await call('Input.dispatchKeyEvent', {
       type: 'keyDown',
@@ -458,7 +485,28 @@ try {
     // Exercise actual structured cloning of a nonextractable CryptoKey into IndexedDB.
     assert(
       await evaluate(
-        `(async()=>{const {EncryptedRecovery,indexedRecoveryDatabase,browserLease}=await import('/src/platform/recovery.ts');const owner='dddddddd-dddd-4ddd-8ddd-dddddddddddd';const db=indexedRecoveryDatabase(globalThis.indexedDB);const v=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));await v.storage('booking').set('synthetic-command-only');const stored=await db.get(owner);if(stored.key.extractable)throw Error('Extractable key');await v.dispose(false);const restored=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));if(await restored.storage('booking').get()!=='synthetic-command-only')throw Error('Recovery lost');const blocked=new EncryptedRecovery(owner,()=>true,db,crypto,browserLease(navigator.locks));let denied=false;try{await blocked.storage('booking').get();}catch{denied=true;}if(!denied)throw Error('Lease bypass');await restored.dispose(true);return !(await db.get(owner));})()`,
+        `(async()=>{
+          const {EncryptedRecovery,indexedRecoveryDatabase,browserLease}=await import('/src/platform/recovery.ts');
+          const owner='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+          const db=indexedRecoveryDatabase(globalThis.indexedDB), lease=browserLease(navigator.locks);
+          const v=new EncryptedRecovery(owner,()=>true,db,crypto,lease);
+          await v.storage('booking').set('synthetic-command-only');
+          const stored=await db.get(owner);if(stored.key.extractable)throw Error('Extractable key');
+          await v.dispose(false);
+          let finishDeletion, enteredDeletion;
+          const gate=new Promise(resolve=>{finishDeletion=resolve;});
+          const entered=new Promise(resolve=>{enteredDeletion=resolve;});
+          const gated={...db,remove:async(id)=>{enteredDeletion();await gate;await db.remove(id);}};
+          const restored=new EncryptedRecovery(owner,()=>true,gated,crypto,lease);
+          if(await restored.storage('booking').get()!=='synthetic-command-only')throw Error('Recovery lost');
+          const passive=restored.dispose(false), deleting=restored.dispose(true);
+          await entered;
+          const blocked=new EncryptedRecovery(owner,()=>true,db,crypto,lease);
+          let denied=false;try{await blocked.storage('booking').get();}catch{denied=true;}
+          if(!denied)throw Error('Owner lock released before deletion');
+          finishDeletion();await Promise.all([passive,deleting]);
+          return !(await db.get(owner));
+        })()`,
       ),
     );
     await button('Log out');

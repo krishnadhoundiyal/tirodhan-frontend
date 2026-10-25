@@ -2,6 +2,8 @@
 
 25 October 2026. This supersedes the reduced CW-P0-01 scope: **Customer Web is a complete customer application; transaction exclusions are withdrawn.** Functional reference is actual Customer Mobile source, not historical reports. Deployment/authentication boundaries and independent app ownership remain frozen.
 
+The follow-up [review closure and deployment requirements](CUSTOMER_WEB_REVIEW_CLOSURE_REPORT.md) records CW-01 through CW-05 corrections and the still-open CW-06 through CW-12 real-environment acceptance gates.
+
 ## Audited baseline and status definitions
 
 Mobile reference: `d0a9ab15a7436d2329b6af103775c72ff1bfc969`, tree verified against fetched origin/main. Backend inspected read-only: `b281e03a47d202fd8b5c3d895075aa358062c5fa`. Existing Web foundation `f4b76cf0f600d46d7d7bfa15072c964825f31ad8` retained. `apps/customer-web/parity-source-audit.json` records normalized SHA-256 for **111 Mobile source/test modules and every one of its 17 route/layout modules**. Its test fails if the reference changes or a route has no recorded equivalent. CI watches Mobile paths and the Customer Web test cache includes those inputs. Refreshing the snapshot requires repeating this audit; the script does not establish parity by itself.

@@ -43,6 +43,14 @@ export const unavailableAdapter: WebSessionAdapter = {
   },
   logout: async () => {},
 };
+/** Only the cookie adapter can establish a settled, authoritative refresh 401.
+ * A business/principal 401 after a grant is not evidence of cookie absence. */
+export class NoRefreshSessionError extends Error {
+  constructor() {
+    super('No active browser session.');
+    this.name = 'NoRefreshSessionError';
+  }
+}
 export type Phase =
   'unavailable' | 'signedOut' | 'checking' | 'ready' | 'denied' | 'error';
 export interface SessionState {
@@ -330,12 +338,20 @@ export class CustomerSession {
       throw new CustomerError('unavailable');
     this.#clear('checking');
     const epoch = this.#state.epoch;
+    let refreshReturned = false;
     try {
-      await this.#admit(
-        grant(await this.#bounded((s) => this.adapter.refresh(s))),
-        epoch,
-      );
+      const raw = await this.#bounded((s) => this.adapter.refresh(s));
+      refreshReturned = true;
+      await this.#admit(grant(raw), epoch);
     } catch (e) {
+      if (
+        !refreshReturned &&
+        e instanceof NoRefreshSessionError &&
+        epoch === this.#state.epoch
+      ) {
+        this.#clear('signedOut', false);
+        return;
+      }
       if (epoch === this.#state.epoch) this.#clear('error', true);
       throw e;
     }
