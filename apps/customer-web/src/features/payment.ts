@@ -18,6 +18,7 @@ interface AttemptRecovery {
   key: string;
   attemptId?: string;
   launched?: boolean;
+  rejectedAttemptId?: string;
 }
 export class PaymentFlow {
   #flight: Promise<PaymentRead> | null = null;
@@ -41,11 +42,19 @@ export class PaymentFlow {
   async #restore() {
     const raw = await this.storage.get();
     if (raw) {
-      const r: AttemptRecovery = JSON.parse(raw);
+      let r: AttemptRecovery;
+      try {
+        r = JSON.parse(raw) as AttemptRecovery;
+      } catch {
+        throw new ApiError(200, 'protocol');
+      }
       if (
+        !r ||
         r.requestId !== this.id ||
         !uuid(r.key) ||
-        (r.attemptId !== undefined && !uuid(r.attemptId))
+        (r.attemptId !== undefined && !uuid(r.attemptId)) ||
+        (r.rejectedAttemptId !== undefined && !uuid(r.rejectedAttemptId)) ||
+        (r.launched !== undefined && typeof r.launched !== 'boolean')
       )
         throw new ApiError(200, 'protocol');
       this.#record = r;
@@ -88,7 +97,15 @@ export class PaymentFlow {
     ) {
       // Backend explicitly excludes a definitively rejected initial order. It alone
       // authorizes a fresh preparation identity; uncertainty never enters this path.
-      if (this.#record?.attemptId === attemptId) this.#record = null;
+      // Remember which rejection authorized this identity. A lost NEW attempt
+      // response followed by the same (older) failed projection must replay the
+      // new key, rather than authorize yet another preparation.
+      if (this.#record?.rejectedAttemptId !== attemptId)
+        this.#record = {
+          requestId: this.id,
+          key: crypto.randomUUID(),
+          rejectedAttemptId: attemptId,
+        };
       attemptId = undefined;
     }
     if (payment.action === 'START' && !attemptId) {
@@ -101,7 +118,11 @@ export class PaymentFlow {
       this.#assert(signal);
       this.#record = { ...this.#record, attemptId: attempt.payment_attempt_id };
       await this.storage.set(JSON.stringify(this.#record));
-      if (attempt.action === 'WAIT' || attempt.action === 'UNAVAILABLE')
+      if (
+        attempt.status !== 'PENDING' ||
+        attempt.action === 'WAIT' ||
+        attempt.action === 'UNAVAILABLE'
+      )
         return this.#read(signal);
       attemptId = attempt.payment_attempt_id;
     }
@@ -126,6 +147,9 @@ export class PaymentFlow {
     this.#record = {
       requestId: this.id,
       key: this.#record?.key ?? crypto.randomUUID(),
+      ...(this.#record?.rejectedAttemptId
+        ? { rejectedAttemptId: this.#record.rejectedAttemptId }
+        : {}),
       attemptId,
       launched: true,
     };

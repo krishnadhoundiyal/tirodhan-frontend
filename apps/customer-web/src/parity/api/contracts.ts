@@ -81,12 +81,14 @@ export interface CollectionResponse {
   payment_id: string;
   items: CollectionItem[];
 }
+export type RawPaymentAttemptStatus =
+  'CREATED' | 'PENDING' | 'INITIATION_UNCERTAIN' | 'FAILED' | 'SUCCEEDED';
 export interface PaymentAttempt {
   action: import('./customer-contracts').PaymentRead['action'];
   action_reason: import('./customer-contracts').PaymentRead['action_reason'];
   checkout_ready_until: string | null;
   payment_attempt_id: string;
-  status: string;
+  status: RawPaymentAttemptStatus;
   provider: string;
   provider_order_id: string | null;
   provider_payment_id: string | null;

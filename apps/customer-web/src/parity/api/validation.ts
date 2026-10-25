@@ -151,9 +151,9 @@ export function paymentAttempt(v: unknown) {
   return {
     payment_attempt_id: id(r.payment_attempt_id),
     status: choice(
+      'CREATED',
       'PENDING',
-      'PROCESSING',
-      'CONFIRMING',
+      'INITIATION_UNCERTAIN',
       'SUCCEEDED',
       'FAILED',
     )(r.status),
