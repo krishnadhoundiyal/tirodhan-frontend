@@ -1,0 +1,94 @@
+name: Customer Web quality
+on:
+  pull_request:
+    paths:
+      - 'apps/customer-web/**'
+      - 'apps/customer-mobile/**'
+      - 'docs/CUSTOMER_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/customer-web.yml'
+  push:
+    branches: ['codex/customer-web-foundation']
+    paths:
+      - 'apps/customer-web/**'
+      - 'apps/customer-mobile/**'
+      - 'docs/CUSTOMER_WEB_*.md'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - '.github/workflows/customer-web.yml'
+permissions:
+  contents: read
+jobs:
+  affected-app-regressions:
+    name: Regression (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [customer-mobile, rider-mobile, operations-web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tirodhan/${{ matrix.app }} run typecheck
+      - run: pnpm --filter @tirodhan/${{ matrix.app }} run lint
+      - run: pnpm --filter @tirodhan/${{ matrix.app }} run test
+  apim-regressions:
+    name: APIM policy regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: node infra/apim/web-session/render.mjs
+      - run: node --test infra/apim/web-session/render.test.mjs
+      - run: python3 infra/apim/web-session/validate.py
+      - run: dotnet run --project infra/apim/web-session/tests/PolicyExpressions.csproj
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+          DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: 'false'
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck:customer-web
+      - run: pnpm run lint:customer-web
+      - run: pnpm exec prettier --check apps/customer-web docs/CUSTOMER_WEB_*.md .github/workflows/customer-web.yml package.json turbo.json
+      - run: pnpm run test:customer-web
+      - run: pnpm --filter @tirodhan/customer-web run build
+        env:
+          NODE_ENV: development
+          VITE_CUSTOMER_FIXTURE: 'true'
+      - run: pnpm --filter @tirodhan/customer-web run test:production-isolation
+      - run: pnpm run build:customer-web
+        env:
+          NODE_ENV: production
+          VITE_CUSTOMER_FIXTURE: 'true'
+      - run: pnpm --filter @tirodhan/customer-web run test:production-isolation
+      - run: pnpm --filter @tirodhan/customer-web run test:browser
+      - run: pnpm --filter @tirodhan/customer-web run test:browser --fixture
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: customer-web-browser-observations
+          path: .local/cw-p0-01/browser/*.png

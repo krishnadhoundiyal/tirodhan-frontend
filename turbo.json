@@ -3,10 +3,18 @@
   "tasks": {
     "build": {
       "outputs": ["dist/**"],
-      "env": ["VITE_OPERATIONS_*", "NODE_ENV"]
+      "env": ["VITE_OPERATIONS_*", "VITE_CUSTOMER_*", "NODE_ENV"]
     },
     "typecheck": { "outputs": [] },
     "lint": { "outputs": [] },
-    "test": { "outputs": [] }
+    "test": { "outputs": [] },
+    "@tirodhan/customer-web#test": {
+      "outputs": [],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/customer-mobile/src/**",
+        "$TURBO_ROOT$/apps/customer-mobile/app/**"
+      ]
+    }
   }
 }

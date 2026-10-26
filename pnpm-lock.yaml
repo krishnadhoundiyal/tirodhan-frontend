@@ -163,6 +163,79 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  apps/customer-web:
+    dependencies:
+      '@tanstack/react-query':
+        specifier: 5.104.1
+        version: 5.104.1(react@19.2.3)
+      leaflet:
+        specifier: 1.9.4
+        version: 1.9.4
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+    devDependencies:
+      '@babel/core':
+        specifier: 7.29.7
+        version: 7.29.7(supports-color@8.1.1)
+      '@babel/preset-env':
+        specifier: 7.29.7
+        version: 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      '@babel/preset-react':
+        specifier: 7.29.7
+        version: 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      '@babel/preset-typescript':
+        specifier: 7.29.7
+        version: 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      '@testing-library/dom':
+        specifier: 10.4.2
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: 16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@types/jest':
+        specifier: 29.5.14
+        version: 29.5.14
+      '@types/leaflet':
+        specifier: 1.9.22
+        version: 1.9.22
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      babel-jest:
+        specifier: 29.7.0
+        version: 29.7.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1)
+      eslint:
+        specifier: 10.12.0
+        version: 10.12.0(supports-color@8.1.1)
+      eslint-plugin-react-hooks:
+        specifier: 7.1.1
+        version: 7.1.1(eslint@10.12.0(supports-color@8.1.1))(supports-color@8.1.1)
+      jest:
+        specifier: 29.7.0
+        version: 29.7.0(@types/node@26.6.4)(supports-color@8.1.1)
+      jest-environment-jsdom:
+        specifier: 29.7.0
+        version: 29.7.0(supports-color@8.1.1)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      typescript-eslint:
+        specifier: 8.72.0
+        version: 8.72.0(eslint@10.12.0(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
+      vite:
+        specifier: 8.3.5
+        version: 8.3.5(@types/node@26.6.4)(terser@5.51.2)(yaml@2.9.1)
+
   apps/operations-web:
     dependencies:
       '@tanstack/react-query':
@@ -2618,6 +2691,7 @@ packages:
   acorn@8.19.0:
     resolution: {integrity: sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==}
     engines: {node: '>=0.4.0'}
+    hasBin: true
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -4997,10 +5071,6 @@ packages:
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
-  postcss@8.5.29:
-    resolution: {integrity: sha512-49cGhUbXj8Qenv0iTMxA1cFBzxXoctpC9Ujd77t1WcbJIr6nF/eI7g/8MgxrYldFRuAXvja7xQRwavoW7kgrxQ==}
-    engines: {node: ^10 || ^12 || >=14}
-
   postcss@8.5.31:
     resolution: {integrity: sha512-YUbWYCgErwnMAVkjUnYa+KlMBzGpHwiIt/DE7f0G33AuX2LH9UcTk6KgWxd3zRU+pN3u/C+Xl3EnMLM4Hea7Sg==}
     engines: {node: ^10 || ^12 || >=14}
@@ -7256,7 +7326,7 @@ snapshots:
       jsc-safe-url: 0.2.4
       lightningcss: 1.33.0
       picomatch: 4.0.7
-      postcss: 8.5.29
+      postcss: 8.5.31
       resolve-from: 5.0.0
     optionalDependencies:
       expo: 57.0.31(b1d6ea120585a17d84f3dd9fe3c5cb8b)
@@ -8656,8 +8726,8 @@ snapshots:
 
   '@typescript-eslint/project-service@8.71.1(supports-color@8.1.1)(typescript@6.0.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.71.1(typescript@6.0.3)
-      '@typescript-eslint/types': 8.71.1
+      '@typescript-eslint/tsconfig-utils': 8.72.0(typescript@6.0.3)
+      '@typescript-eslint/types': 8.72.0
       debug: 4.4.3(supports-color@8.1.1)
       typescript: 6.0.3
     transitivePeerDependencies:
@@ -9795,7 +9865,7 @@ snapshots:
   eslint-plugin-expo@1.1.0(eslint@10.12.0(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3):
     dependencies:
       '@typescript-eslint/types': 8.71.1
-      '@typescript-eslint/utils': 8.71.1(eslint@10.12.0(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
+      '@typescript-eslint/utils': 8.72.0(eslint@10.12.0(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       eslint: 10.12.0(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
@@ -12021,12 +12091,6 @@ snapshots:
   possible-typed-array-names@1.1.0: {}
 
   postcss-value-parser@4.2.0: {}
-
-  postcss@8.5.29:
-    dependencies:
-      nanoid: 3.3.20
-      picocolors: 1.1.1
-      source-map-js: 1.2.2
 
   postcss@8.5.31:
     dependencies:
