@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+tone_instructions: "Be concise. Prioritize user-visible functionality, backend-contract correctness, security, session behavior, product boundaries, and regression risk over style-only comments."
+
+chat:
+  auto_reply: true
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  review_status: true
+  review_details: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  poem: false
+  enable_prompt_for_ai_agents: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    ignore_title_keywords:
+      - "WIP"
+
+  path_instructions:
+    - path: "apps/**/*.{ts,tsx,js,jsx}"
+      instructions: |
+        Functionality is the first priority.
+        Treat docs/FRONTEND_ARCHITECTURE.md as frontend authority and the linked backend repository as API and domain authority.
+        Flag invented endpoints, fields, roles, idempotency behavior, or backend assumptions.
+        Verify product boundaries, authentication and session behavior, authorization presentation versus backend authority, retry behavior, error handling, loading and recovery paths, and user-visible regressions.
+        Do not reward abstractions that accidentally couple independently deployable applications.
+
+    - path: "apps/customer-mobile/**/*.{ts,tsx}"
+      instructions: |
+        Review the complete customer journey across authentication, addresses and serviceability, booking, slot selection, payment, activity, account, and recovery from failures.
+        Flag behavior that works only in preview fixtures but is broken in the real repository path, or that changes frozen UX or backend contracts without explicit authority.
+
+    - path: "apps/rider-mobile/**/*.{ts,tsx}"
+      instructions: |
+        Prioritize operational correctness, reliability during field work, assignment and pickup state, evidence handling, retries, and interruption recovery.
+        Flag any Customer-only assumptions or permissions leaking into the Rider product.
+
+    - path: "apps/*-web/**/*.{ts,tsx,js,jsx}"
+      instructions: |
+        Review web authentication against the documented APIM web-session boundary.
+        Flag browser storage of stable refresh credentials, authorization based on client-asserted roles, unsafe credentialed CORS or CSRF behavior, and accidental coupling between Customer Web and Operations Web sessions.
+
+    - path: "packages/**"
+      instructions: |
+        Shared packages must represent deliberate cross-application value.
+        Flag application-specific business orchestration moved into shared code merely for reuse, cross-app source coupling, or a shared abstraction that forces unrelated applications to release together.
+
+    - path: "**/*.{test,spec}.{ts,tsx,js,jsx}"
+      instructions: |
+        Review whether tests cover user behavior, backend-contract handling, failure states, retry and session behavior, and regressions across affected applications.
+        Prefer behavior and integration risk coverage over snapshots that only mirror implementation.
+
+knowledge_base:
+  linked_repositories:
+    - repository: "krishnadhoundiyal/tirodhan"
+      instructions: "Authoritative FastAPI backend, domain model, authentication, idempotency, persistence, and API contracts. Validate frontend changes against actual backend behavior and flag invented or incompatible client assumptions."
