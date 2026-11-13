@@ -1,5 +1,5 @@
 import { isRunningInExpoGo } from 'expo';
-import { TurboModuleRegistry } from 'react-native';
+import { Platform, TurboModuleRegistry } from 'react-native';
 import { ApiError } from '../../api/errors';
 import { appMode, hasCustomerCapability } from '../../lib/runtime';
 import type { NativeCheckout } from './paymentFlow';
@@ -12,7 +12,9 @@ function canUseCheckout() {
     hasCustomerCapability('payment') &&
     hasCustomerCapability('checkout') &&
     TurboModuleRegistry.get('RNRazorpayCheckout') !== null &&
-    TurboModuleRegistry.get('RazorpayEventEmitter') !== null
+    (Platform.OS === 'android' ||
+      (Platform.OS === 'ios' &&
+        TurboModuleRegistry.get('RazorpayEventEmitter') !== null))
   );
 }
 

@@ -204,3 +204,26 @@ test('financial DTOs discard unknown provider payloads before entering applicati
     }),
   ).not.toHaveProperty('provider_payload');
 });
+test('a native checkout start failure releases ownership and surfaces only a safe error', async () => {
+  const sdk = {
+    open: jest
+      .fn()
+      .mockRejectedValueOnce({
+        tirodhan_checkout_not_started: true,
+        ignored: 'untrusted native data',
+      })
+      .mockResolvedValueOnce({}),
+  };
+  const adapter = createRazorpayAdapter(
+    () => true,
+    async () => sdk,
+  );
+  await expect(adapter.launch(parameters(), jest.fn())).rejects.toMatchObject({
+    kind: 'configuration',
+    message: 'Request configuration',
+  });
+  expect(adapter.available?.()).toBe(true);
+  await expect(
+    adapter.launch(parameters(), jest.fn()),
+  ).resolves.toBeUndefined();
+});

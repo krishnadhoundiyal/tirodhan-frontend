@@ -580,3 +580,30 @@ test.each([{ amount_minor: 0 }, { currency: 'USD' }])(
     expect(s.native.launch).not.toHaveBeenCalled();
   },
 );
+test('a sanitized pre-launch failure is shown and allows explicit retry on the original order', async () => {
+  const s = setup();
+  s.native.launch.mockRejectedValueOnce(new ApiError(0, 'configuration'));
+  await expect(s.flow.start()).rejects.toMatchObject({ kind: 'configuration' });
+  expect(s.flow.getSnapshot().nativeOutstanding).toBe(false);
+  expect(s.flow.getSnapshot().error).toMatchObject({ kind: 'configuration' });
+  s.execute.mockResolvedValue({ ...attempt(), action: 'RESUME' });
+  await s.flow.start();
+  expect(s.repository.paymentAttempt.mock.calls.map((call) => call[1])).toEqual(
+    [commandKey, commandKey],
+  );
+});
+test('detail WAIT keeps verification running when the payment read fails', async () => {
+  const s = setup();
+  s.setPayment({
+    status: 'CONFIRMING',
+    action: 'WAIT',
+    action_reason: 'VERIFICATION_REQUIRED',
+    verification_pending: true,
+  });
+  s.repository.payment.mockRejectedValueOnce(new ApiError(0, 'network'));
+
+  await expect(s.flow.refresh()).rejects.toMatchObject({ kind: 'network' });
+  await jest.advanceTimersByTimeAsync(2001);
+  expect(s.repository.payment).toHaveBeenCalledTimes(2);
+  expect(s.flow.getSnapshot().payment?.status).toBe('CONFIRMING');
+});

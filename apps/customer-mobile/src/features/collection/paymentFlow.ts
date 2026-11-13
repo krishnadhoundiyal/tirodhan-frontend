@@ -89,12 +89,16 @@ export function paymentFlow(
     if (timer) clearTimeout(timer);
     timer = null;
   };
-  const needsVerification = () =>
-    state.payment?.status !== 'SUCCEEDED' &&
-    (verifyRequested ||
-      state.payment?.verification_pending ||
-      state.payment?.action === 'WAIT' ||
-      ['PROCESSING', 'CONFIRMING'].includes(state.payment?.status ?? ''));
+  const needsVerification = () => {
+    const payment = state.payment ?? state.detail?.payment;
+    return (
+      payment?.status !== 'SUCCEEDED' &&
+      (verifyRequested ||
+        payment?.verification_pending ||
+        payment?.action === 'WAIT' ||
+        ['PROCESSING', 'CONFIRMING'].includes(payment?.status ?? ''))
+    );
+  };
   const beginWindow = () => {
     stopTimer();
     deadline = monotonicNow() + windowMs;
@@ -305,11 +309,10 @@ export function paymentFlow(
       // Discard provider success/error payloads; all financial confirmation is from backend reads.
       const completion = Promise.resolve()
         .then(() => native.launch(parameters, () => authorize(parameters)))
-        .then(
-          () => {},
-          () => {},
-        )
-        .then(() => {
+        .catch((error: unknown) => {
+          if (error instanceof ApiError) throw error;
+        })
+        .finally(() => {
           returned = true;
           publish({ nativeOutstanding: false });
           if (timedOut && !disposed && scope.isCurrent() && foreground)
@@ -325,7 +328,12 @@ export function paymentFlow(
           Math.min(180000, Math.max(1000, scope.callbackTimeoutMs ?? 60000)),
         );
       });
-      await Promise.race([completion, timeout]);
+      try {
+        await Promise.race([completion, timeout]);
+      } catch (error) {
+        entered = false;
+        throw error;
+      }
       if (callbackTimer) clearTimeout(callbackTimer);
       callbackTimer = null;
       releaseCallbackWait = null;
@@ -340,6 +348,7 @@ export function paymentFlow(
     } finally {
       if (callbackTimer) clearTimeout(callbackTimer);
       callbackTimer = null;
+      releaseCallbackWait = null;
       publish({
         phase: entered || verifyRequested ? 'awaiting' : 'idle',
         busy: false,

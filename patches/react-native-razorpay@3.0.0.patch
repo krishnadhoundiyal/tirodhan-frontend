@@ -22,3 +22,33 @@ index 1020f4ef5cdde9112aa21504c7c6568ce80b1167..0f8dc050c0317fbf7a9db9ad9b4c0a29
  
  	<application>
  		<activity android:name="com.razorpay.CheckoutActivity" 
+diff --git a/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java b/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
+index f0a4f343f124303099314915c816a07be726c19a..4a932914555b09795ff081564522205a48b053c1 100644
+--- a/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
++++ b/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
+@@ -36,6 +36,7 @@ public class RazorpayModuleImpl {
+     public void open(ReadableMap options) {
+         Activity currentActivity = reactContext.getCurrentActivity();
+         if (currentActivity == null) {
++            reportCheckoutNotStarted();
+             return;
+         }
+ 
+@@ -46,10 +47,16 @@ public class RazorpayModuleImpl {
+             intent.putExtra("FRAMEWORK", "react_native");
+             currentActivity.startActivityForResult(intent, Checkout.RZP_REQUEST_CODE);
+         } catch (Exception e) {
+-            // Silently fail as per original implementation
++            reportCheckoutNotStarted();
+         }
+     }
+ 
++    private void reportCheckoutNotStarted() {
++        WritableMap error = Arguments.createMap();
++        error.putBoolean("tirodhan_checkout_not_started", true);
++        sendEvent("Razorpay::PAYMENT_ERROR", error);
++    }
++
+     /**
+      * Handles successful payment callback from Razorpay SDK.
+      */

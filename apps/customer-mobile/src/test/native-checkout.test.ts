@@ -1,5 +1,5 @@
 import { isRunningInExpoGo } from 'expo';
-import { TurboModuleRegistry } from 'react-native';
+import { Platform, TurboModuleRegistry } from 'react-native';
 import type { CheckoutParameters } from '../api/customer-contracts';
 import { nativeCheckout } from '../features/collection/nativeCheckout.native';
 
@@ -39,6 +39,7 @@ const parameters: CheckoutParameters = {
 test('native checkout fails closed in preview, Expo Go, with missing capabilities or modules, and for live keys', async () => {
   const authorize = jest.fn();
   const module = jest.spyOn(TurboModuleRegistry, 'get').mockReturnValue({});
+  const platform = jest.replaceProperty(Platform, 'OS', 'ios');
   mockMode = 'SCREEN_PREVIEW';
   expect(nativeCheckout.available?.()).toBe(false);
   mockMode = 'PRODUCTION';
@@ -59,6 +60,11 @@ test('native checkout fails closed in preview, Expo Go, with missing capabilitie
   expect(mockSdkLoaded).not.toHaveBeenCalled();
   expect(authorize).not.toHaveBeenCalled();
 
+  module.mockImplementation((name) =>
+    name === 'RNRazorpayCheckout' ? {} : null,
+  );
+  expect(nativeCheckout.available?.()).toBe(false);
+  platform.replaceValue('android');
   expect(nativeCheckout.available?.()).toBe(true);
   await nativeCheckout.launch(parameters, authorize);
   expect(mockSdkLoaded).toHaveBeenCalledTimes(1);
@@ -71,4 +77,5 @@ test('native checkout fails closed in preview, Expo Go, with missing capabilitie
     name: 'Tirodhan',
   });
   module.mockRestore();
+  platform.restore();
 });

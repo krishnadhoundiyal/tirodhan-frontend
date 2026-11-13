@@ -142,6 +142,7 @@ test('Pay securely uses coordinator; SDK completion cannot show success before a
   const execute = jest.fn(async () => attempt());
   jest.mocked(repositories.paymentAttempt).mockReturnValue({ execute });
   const native = { launch: jest.fn(async () => {}) };
+  const invalidate = jest.spyOn(client, 'invalidateQueries');
   await render(
     <QueryClientProvider client={client}>
       <FinancialSection detail={detail} checkout={native} />
@@ -169,13 +170,12 @@ test('Pay securely uses coordinator; SDK completion cannot show success before a
   );
   await screen.findByText('Payment received');
   expect(execute).toHaveBeenCalledTimes(1);
-  expect(
-    client.getQueryData<CollectionDetail>([
-      'collection',
-      'owner',
-      detail.request_id,
-    ])?.status,
-  ).toBe('ACCEPTED');
+  await waitFor(() =>
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['collection', 'owner', detail.request_id],
+      exact: true,
+    }),
+  );
 });
 test('WAIT exposes verification inquiry without opening SDK; foreground return refreshes backend state', async () => {
   let onState: (state: AppStateStatus) => void = () => {};
@@ -284,3 +284,26 @@ test.each(['Expo Go', 'web'])(
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   },
 );
+test('a delayed payment detail does not overwrite a newer cancelled booking', async () => {
+  const old = detail;
+  const cancelled = { ...old, status: 'CANCELLED' as const };
+  const key = ['collection', mockSnapshot.userId, old.request_id];
+  let finish!: (value: CollectionDetail) => void;
+  const pending = new Promise<CollectionDetail>((resolve) => {
+    finish = resolve;
+  });
+  jest.mocked(repositories.detail).mockReturnValue(pending);
+  await render(
+    <QueryClientProvider client={client}>
+      <FinancialSection detail={old} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(repositories.detail).toHaveBeenCalled());
+  await act(async () => {
+    client.setQueryData(key, cancelled);
+    finish(old);
+    await pending;
+  });
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  expect(client.getQueryData(key)).toEqual(cancelled);
+});

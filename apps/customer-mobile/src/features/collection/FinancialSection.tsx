@@ -110,14 +110,27 @@ export default function FinancialSection({
         ['payment', owner, detail.request_id],
         state.payment,
       );
-    if (state.detail)
-      queryClient.setQueryData(
-        ['collection', owner, detail.request_id],
-        state.detail,
-      );
+  }, [state.payment, owner, generation, detail.request_id, queryClient]);
+  const observedCollectionStatus = state.detail?.status;
+  const observedCollectionPaymentStatus = state.detail?.payment.status;
+  useEffect(() => {
+    const current = navigationSession.getSnapshot();
+    if (
+      observedCollectionStatus &&
+      (observedCollectionStatus !== detail.status ||
+        observedCollectionPaymentStatus !== detail.payment.status) &&
+      navigationOwner(current) === owner &&
+      current.ownerVersion === generation
+    )
+      void queryClient.invalidateQueries({
+        queryKey: ['collection', owner, detail.request_id],
+        exact: true,
+      });
   }, [
-    state.payment,
-    state.detail,
+    observedCollectionStatus,
+    observedCollectionPaymentStatus,
+    detail.status,
+    detail.payment.status,
     owner,
     generation,
     detail.request_id,

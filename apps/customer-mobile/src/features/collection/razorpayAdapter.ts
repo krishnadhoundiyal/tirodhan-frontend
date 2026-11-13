@@ -44,7 +44,15 @@ export function createRazorpayAdapter(
           })
           .then(
             () => {},
-            () => {},
+            (error: unknown) => {
+              if (
+                typeof error === 'object' &&
+                error !== null &&
+                'tirodhan_checkout_not_started' in error &&
+                error.tirodhan_checkout_not_started === true
+              )
+                throw new ApiError(0, 'configuration');
+            },
           );
       } catch (error) {
         // Never retain/log/propagate provider payloads or native exception details.
