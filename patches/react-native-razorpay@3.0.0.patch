@@ -1,0 +1,24 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 050a6d898b586bb1ff9ed3d29f6ff9a7ee0b673f..100613f1f1784058441059e5d9e6507d9cd736a0 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -19,6 +19,7 @@ def safeExtGet(prop, fallback) {
+ }
+ 
+ android {
++    namespace 'com.razorpay.rn'
+     compileSdkVersion safeExtGet('compileSdkVersion', 28)
+ 
+     defaultConfig {
+diff --git a/android/src/main/AndroidManifest.xml b/android/src/main/AndroidManifest.xml
+index 1020f4ef5cdde9112aa21504c7c6568ce80b1167..0f8dc050c0317fbf7a9db9ad9b4c0a2939be0ea8 100644
+--- a/android/src/main/AndroidManifest.xml
++++ b/android/src/main/AndroidManifest.xml
+@@ -1,6 +1,5 @@
+ 
+-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+-          package="com.razorpay.rn">
++<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+ 	<application>
+ 		<activity android:name="com.razorpay.CheckoutActivity" 

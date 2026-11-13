@@ -7,3 +7,6 @@ allowBuilds:
   '@firebase/util': false
   protobufjs: false
   unrs-resolver: true
+
+patchedDependencies:
+  react-native-razorpay@3.0.0: patches/react-native-razorpay@3.0.0.patch

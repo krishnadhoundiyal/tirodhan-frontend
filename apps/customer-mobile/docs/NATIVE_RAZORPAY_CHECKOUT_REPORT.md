@@ -1,5 +1,21 @@
 # CM-P0-05: Payment implementation and native validation
 
+## NONPROD follow-up (13 November 2026)
+
+This branch brings the prior payment coordinator onto current main and connects
+the pinned official SDK to the existing native checkout port. Checkout is
+available only in a native NONPROD build with the payment and checkout
+capabilities and both SDK modules present. Live Razorpay keys are rejected
+before opening the SDK. The provider callback remains a signal to read the
+backend payment state.
+
+The package patch adds the Android library namespace and removes the obsolete
+manifest package attribute. JavaScript tests and Android bundle export do not
+establish native Gradle or device acceptance. Validate the development APK with
+the approved test merchant before marking paid booking verified.
+
+The October assessment below is retained as implementation history.
+
 Updated 2026-10-23 (Asia/Calcutta). Branch: `codex/customer-native-razorpay`.
 The original assessment commit `640afe4eb31881cf3ea6040156ba9f0c7443f4e1` remains
 in this branch's ancestry, along with dependency correction `e32a074` and the
