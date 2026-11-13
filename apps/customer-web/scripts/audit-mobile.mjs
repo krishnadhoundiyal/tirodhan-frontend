@@ -3,6 +3,9 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve, relative } from 'node:path';
 const root = resolve('../customer-mobile');
+const referenceCommit = process.argv[2];
+if (!/^[0-9a-f]{40}$/.test(referenceCommit ?? ''))
+  throw new Error('Supply the reviewed Mobile source commit.');
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   return (
@@ -55,7 +58,7 @@ await writeFile(
   'parity-source-audit.json',
   JSON.stringify(
     {
-      referenceCommit: 'd0a9ab15a7436d2329b6af103775c72ff1bfc969',
+      referenceCommit,
       normalization: 'UTF-8, CRLF -> LF',
       routes,
       files,
