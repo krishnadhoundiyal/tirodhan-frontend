@@ -3,6 +3,17 @@
   "build": {
     "development": { "developmentClient": true, "distribution": "internal" },
     "preview": { "distribution": "internal" },
-    "production": { "autoIncrement": true }
+    "production": { "autoIncrement": true },
+    "checkout-development": {
+      "extends": "development",
+      "node": "24.19.0",
+      "pnpm": "11.25.0",
+      "env": { "EXPO_PUBLIC_APP_MODE": "NONPROD" },
+      "android": {
+        "gradleCommand": ":app:assembleDebug",
+        "withoutCredentials": true,
+        "resourceClass": "medium"
+      }
+    }
   }
 }

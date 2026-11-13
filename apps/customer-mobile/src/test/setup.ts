@@ -4,3 +4,11 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn(),
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 5,
 }));
+
+afterEach(() => {
+  jest
+    .requireActual<typeof import('../features/collection/paymentFlow')>(
+      '../features/collection/paymentFlow',
+    )
+    .clearPaymentFlows();
+});

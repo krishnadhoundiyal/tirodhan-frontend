@@ -1,0 +1,54 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 050a6d898b586bb1ff9ed3d29f6ff9a7ee0b673f..100613f1f1784058441059e5d9e6507d9cd736a0 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -19,6 +19,7 @@ def safeExtGet(prop, fallback) {
+ }
+ 
+ android {
++    namespace 'com.razorpay.rn'
+     compileSdkVersion safeExtGet('compileSdkVersion', 28)
+ 
+     defaultConfig {
+diff --git a/android/src/main/AndroidManifest.xml b/android/src/main/AndroidManifest.xml
+index 1020f4ef5cdde9112aa21504c7c6568ce80b1167..0f8dc050c0317fbf7a9db9ad9b4c0a2939be0ea8 100644
+--- a/android/src/main/AndroidManifest.xml
++++ b/android/src/main/AndroidManifest.xml
+@@ -1,6 +1,5 @@
+ 
+-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+-          package="com.razorpay.rn">
++<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+ 	<application>
+ 		<activity android:name="com.razorpay.CheckoutActivity" 
+diff --git a/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java b/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
+index f0a4f343f124303099314915c816a07be726c19a..4a932914555b09795ff081564522205a48b053c1 100644
+--- a/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
++++ b/android/src/main/java/com/razorpay/rn/RazorpayModuleImpl.java
+@@ -36,6 +36,7 @@ public class RazorpayModuleImpl {
+     public void open(ReadableMap options) {
+         Activity currentActivity = reactContext.getCurrentActivity();
+         if (currentActivity == null) {
++            reportCheckoutNotStarted();
+             return;
+         }
+ 
+@@ -46,10 +47,16 @@ public class RazorpayModuleImpl {
+             intent.putExtra("FRAMEWORK", "react_native");
+             currentActivity.startActivityForResult(intent, Checkout.RZP_REQUEST_CODE);
+         } catch (Exception e) {
+-            // Silently fail as per original implementation
++            reportCheckoutNotStarted();
+         }
+     }
+ 
++    private void reportCheckoutNotStarted() {
++        WritableMap error = Arguments.createMap();
++        error.putBoolean("tirodhan_checkout_not_started", true);
++        sendEvent("Razorpay::PAYMENT_ERROR", error);
++    }
++
+     /**
+      * Handles successful payment callback from Razorpay SDK.
+      */

@@ -4,6 +4,17 @@
 
 The follow-up [review closure and deployment requirements](CUSTOMER_WEB_REVIEW_CLOSURE_REPORT.md) records CW-01 through CW-05 corrections and the still-open CW-06 through CW-12 real-environment acceptance gates.
 
+## NONPROD checkout follow-up (13 November 2026)
+
+The updated source audit covers the native checkout and payment recovery changes
+from frontend PR #17. Mobile uses a native SDK, SecureStore recovery and
+foreground-aware verification. Web retains its separate hosted SDK, browser
+recovery and visibility-aware verification. Both use the existing backend
+payment preparation, owned checkout and payment status contracts. The Mobile
+change adds no customer route and does not remove the browser origin, APIM
+session or provider acceptance gates below. This audit records source coverage;
+both client payment paths still require real provider acceptance.
+
 ## Audited baseline and status definitions
 
 Mobile reference: `d0a9ab15a7436d2329b6af103775c72ff1bfc969`, tree verified against fetched origin/main. Backend inspected read-only: `b281e03a47d202fd8b5c3d895075aa358062c5fa`. Existing Web foundation `f4b76cf0f600d46d7d7bfa15072c964825f31ad8` retained. `apps/customer-web/parity-source-audit.json` records normalized SHA-256 for **111 Mobile source/test modules and every one of its 17 route/layout modules**. Its test fails if the reference changes or a route has no recorded equivalent. CI watches Mobile paths and the Customer Web test cache includes those inputs. Refreshing the snapshot requires repeating this audit; the script does not establish parity by itself.

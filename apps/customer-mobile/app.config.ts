@@ -3,6 +3,8 @@ import type { ExpoConfig } from 'expo/config';
 const config: ExpoConfig = {
   name: 'Tirodhan',
   slug: 'tirodhan-customer',
+  owner: 'tirodhan',
+  extra: { eas: { projectId: '265eed10-2b38-4186-a150-10831653ab7e' } },
   version: '1.0.0',
   scheme: 'tirodhan',
   orientation: 'portrait',
