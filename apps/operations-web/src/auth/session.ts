@@ -38,6 +38,12 @@ export const unavailableAdapter: WebSessionAdapter = {
   },
   logout: async () => {},
 };
+export class NoRefreshSessionError extends Error {
+  constructor() {
+    super('No browser session is available.');
+    this.name = 'NoRefreshSessionError';
+  }
+}
 export class ReadError extends Error {
   constructor(
     public readonly kind:
@@ -200,7 +206,9 @@ export class ManagerSession {
         }),
       ]);
     } catch (error) {
-      throw error instanceof ReadError ? error : new ReadError('unavailable');
+      if (error instanceof ReadError || error instanceof NoRefreshSessionError)
+        throw error;
+      throw new ReadError('unavailable');
     } finally {
       clearTimeout(timer!);
       life.removeEventListener('abort', cancel);
@@ -271,12 +279,22 @@ export class ManagerSession {
     this.#available();
     this.#clear('checking');
     const epoch = this.#snapshot.epoch;
+    let refreshReturned = false;
     try {
-      await this.#admit(
-        await this.#bounded((signal) => this.adapter.refresh(signal)),
-        epoch,
+      const grant = await this.#bounded((signal) =>
+        this.adapter.refresh(signal),
       );
+      refreshReturned = true;
+      await this.#admit(grant, epoch);
     } catch (error) {
+      if (
+        !refreshReturned &&
+        error instanceof NoRefreshSessionError &&
+        this.#snapshot.epoch === epoch
+      ) {
+        this.#clear('signedOut');
+        return;
+      }
       this.#authFailure(error, epoch);
     }
   }

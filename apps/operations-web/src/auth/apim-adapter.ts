@@ -1,5 +1,9 @@
 import { ContractError, integer, object, text, uuid } from '../api/schema';
-import { unavailableAdapter, type WebSessionAdapter } from './session';
+import {
+  NoRefreshSessionError,
+  unavailableAdapter,
+  type WebSessionAdapter,
+} from './session';
 
 export interface ApimSessionConfiguration {
   approved: boolean;
@@ -129,7 +133,7 @@ function grant(raw: unknown) {
 export interface CookieOperationLock {
   request<T>(
     name: string,
-    options: { mode: 'exclusive' },
+    options: { mode: 'exclusive'; signal?: AbortSignal },
     operation: () => Promise<T>,
   ): Promise<T>;
 }
@@ -138,6 +142,7 @@ interface Dependencies {
   locks: CookieOperationLock | undefined;
   fetcher: typeof fetch;
   timeoutMs?: number;
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 }
 
 /** Not composed into main.tsx. Approval inputs alone never enable production login. */
@@ -145,9 +150,11 @@ export function createApimWebSessionAdapter(
   configuration: ApimSessionConfiguration | null,
   dependencies: Dependencies,
 ): WebSessionAdapter {
+  let storage: NonNullable<Dependencies['storage']>;
   try {
     if (!configuration || !dependencies.locks) return unavailableAdapter;
     validateApimConfiguration(configuration, dependencies.browserOrigin);
+    storage = dependencies.storage ?? window.localStorage;
   } catch {
     return unavailableAdapter;
   }
@@ -158,46 +165,59 @@ export function createApimWebSessionAdapter(
   const timeoutMs = dependencies.timeoutMs ?? 15000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
     return unavailableAdapter;
-  let needsLogout = false;
+  const recoveryKey = `${lockName}:recovery`;
   const usedVerifications = new Set<string>();
+
+  function requireCleanCookie() {
+    try {
+      if (storage.getItem(recoveryKey) === null) return;
+    } catch {
+      throw new WebSessionError('unavailable');
+    }
+    throw new WebSessionError('logoutRequired');
+  }
+  function writeRecoveryMarker(pending: boolean) {
+    try {
+      if (pending) storage.setItem(recoveryKey, '1');
+      else storage.removeItem(recoveryKey);
+    } catch {
+      throw new WebSessionError('unavailable');
+    }
+  }
   const pending = new Map<string, Promise<unknown>>();
 
-  // Cookie-changing HTTP is serialized across same-origin tabs using Web Locks.
-  // Caller cancellation/deadline does not release the lock while an HTTP response
-  // could still apply Set-Cookie. A stalled underlying fetch blocks later cookie
-  // operations; the UI wait is finite and no parallel cleanup request races it.
   function bounded<T>(
-    operation: (cancelled: () => boolean) => Promise<T>,
+    operation: (requestSignal: AbortSignal) => Promise<T>,
     signal: AbortSignal,
-    sensitive: boolean,
   ): Promise<T> {
-    let cancelled = signal.aborted;
+    if (signal.aborted) return Promise.reject(new WebSessionError('cancelled'));
+    const controller = new AbortController();
     return new Promise<T>((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', abort);
+      };
       const cancel = (kind: 'cancelled' | 'uncertain') => {
-        cancelled = true;
-        if (sensitive) needsLogout = true;
+        cleanup();
         reject(new WebSessionError(kind));
+        controller.abort();
       };
       const abort = () => cancel('cancelled');
       const timer = setTimeout(() => cancel('uncertain'), timeoutMs);
       signal.addEventListener('abort', abort, { once: true });
-      if (cancelled) abort();
       void Promise.resolve()
         .then(() => {
-          if (cancelled) throw new WebSessionError('cancelled');
-          return operation(() => cancelled);
+          if (controller.signal.aborted) throw new WebSessionError('cancelled');
+          return operation(controller.signal);
         })
         .then(resolve, reject)
-        .finally(() => {
-          clearTimeout(timer);
-          signal.removeEventListener('abort', abort);
-        })
-        .catch(() => {});
+        .finally(cleanup);
     });
   }
   async function http(
     operation: keyof typeof config.routes,
     body: unknown,
+    signal: AbortSignal,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -205,6 +225,7 @@ export function createApimWebSessionAdapter(
         config.gatewayOrigin + config.routes[operation],
         {
           method: 'POST',
+          signal,
           mode: 'cors',
           credentials: operation === 'start' ? 'omit' : 'include',
           redirect: 'error',
@@ -230,6 +251,33 @@ export function createApimWebSessionAdapter(
       throw new WebSessionError('invalid');
     const expected =
       operation === 'start' ? 202 : operation === 'logout' ? 204 : 200;
+    if (operation === 'refresh' && response.status === 401) {
+      // Exact sanitized envelopes from the existing APIM admission/shape policy.
+      // Unknown/HTML/truncated 401s are not proof of absent browser credentials.
+      let absent = false;
+      try {
+        if (
+          response.headers
+            ?.get('Content-Type')
+            ?.split(';')[0]
+            ?.trim()
+            .toLowerCase() === 'application/json'
+        ) {
+          const text = await response.text();
+          if (text.length <= 20000) {
+            const error: unknown = JSON.parse(text);
+            exactKeys(error, ['error']);
+            absent = [
+              'AUTHENTICATION_REQUIRED',
+              'AUTHENTICATION_UNAVAILABLE',
+            ].includes((error as { error: string }).error);
+          }
+        }
+      } catch {
+        /* No raw error, credential or body retained. */
+      }
+      if (absent) throw new NoRefreshSessionError();
+    }
     if (response.status !== expected)
       throw new WebSessionError(
         'rejected',
@@ -260,18 +308,45 @@ export function createApimWebSessionAdapter(
       throw new WebSessionError('invalid');
     }
   }
-  async function cookie<T>(
-    operation: (cancelled: () => boolean) => Promise<T>,
+  function cookie<T>(
+    operation: 'verify' | 'refresh' | 'logout',
+    run: (requestSignal: AbortSignal) => Promise<T>,
     signal: AbortSignal,
+    loginId?: string,
   ) {
     return bounded(
-      (cancelled) =>
-        locks.request(lockName, { mode: 'exclusive' }, async () => {
-          if (cancelled()) throw new WebSessionError('cancelled');
-          return operation(cancelled);
-        }),
+      (requestSignal) =>
+        locks.request(
+          lockName,
+          { mode: 'exclusive', signal: requestSignal },
+          async () => {
+            if (requestSignal.aborted) throw new WebSessionError('cancelled');
+            if (operation !== 'logout') requireCleanCookie();
+            if (loginId && usedVerifications.has(loginId))
+              throw new WebSessionError('logoutRequired');
+            // Persist only a recovery marker before sending any cookie request.
+            // The Web Lock stays held until fetch and response processing settle.
+            writeRecoveryMarker(true);
+            let result: T;
+            try {
+              result = await run(requestSignal);
+            } catch (error) {
+              if (
+                operation === 'refresh' &&
+                error instanceof NoRefreshSessionError
+              ) {
+                if (requestSignal.aborted)
+                  throw new WebSessionError('uncertain');
+                writeRecoveryMarker(false);
+              }
+              throw error;
+            }
+            if (requestSignal.aborted) throw new WebSessionError('cancelled');
+            writeRecoveryMarker(false);
+            return result;
+          },
+        ),
       signal,
-      true,
     );
   }
   return {
@@ -281,10 +356,13 @@ export function createApimWebSessionAdapter(
       uuid(body.client_request_id);
       if (!/^\+[1-9][0-9]{7,14}$/.test(body.phone))
         throw new WebSessionError('invalid');
-      if (needsLogout) throw new WebSessionError('logoutRequired');
+      requireCleanCookie();
       // Same identity remains verbatim; provider uncertainty is never auto-retried.
       const request = Object.freeze({ ...body });
-      return bounded(async () => http('start', request), signal, false);
+      return bounded(
+        (requestSignal) => http('start', request, requestSignal),
+        signal,
+      );
     },
     async verifyOtp(body, signal) {
       exactKeys(body, ['client_login_id', 'challenge_reference', 'code']);
@@ -300,23 +378,18 @@ export function createApimWebSessionAdapter(
       const key = JSON.stringify(request);
       const duplicate = pending.get(key);
       if (duplicate) return duplicate;
-      if (needsLogout || usedVerifications.has(request.client_login_id))
-        throw new WebSessionError('logoutRequired');
-      const attempt = cookie(async (cancelled) => {
-        // Confirm old cookie-backed session revocation before a new verify can set
-        // a cookie. No lost-verify recovery is attributed to an unknown principal.
-        try {
-          await http('logout', {});
-          if (cancelled()) throw new WebSessionError('cancelled');
+      const attempt = cookie(
+        'verify',
+        async (requestSignal) => {
+          // Confirm cleanup of any old cookie-backed session before replacing it.
+          await http('logout', {}, requestSignal);
+          if (requestSignal.aborted) throw new WebSessionError('cancelled');
           usedVerifications.add(request.client_login_id);
-          const result = await http('verify', request);
-          if (cancelled()) throw new WebSessionError('cancelled');
-          return result;
-        } catch (error) {
-          needsLogout = true;
-          throw error;
-        }
-      }, signal);
+          return http('verify', request, requestSignal);
+        },
+        signal,
+        request.client_login_id,
+      );
       pending.set(key, attempt);
       try {
         return await attempt;
@@ -324,21 +397,19 @@ export function createApimWebSessionAdapter(
         pending.delete(key);
       }
     },
-    async refresh(signal) {
-      if (needsLogout) throw new WebSessionError('logoutRequired');
-      return cookie(async (cancelled) => {
-        if (needsLogout) throw new WebSessionError('logoutRequired');
-        const result = await http('refresh', {});
-        if (cancelled()) throw new WebSessionError('cancelled');
-        return result;
-      }, signal);
+    refresh(signal) {
+      return cookie(
+        'refresh',
+        (requestSignal) => http('refresh', {}, requestSignal),
+        signal,
+      );
     },
     async logout(signal) {
-      needsLogout = true;
-      await cookie(async (cancelled) => {
-        await http('logout', {});
-        if (!cancelled()) needsLogout = false;
-      }, signal);
+      await cookie(
+        'logout',
+        (requestSignal) => http('logout', {}, requestSignal),
+        signal,
+      );
     },
   };
 }
