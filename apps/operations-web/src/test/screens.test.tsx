@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { onlineManager } from '@tanstack/react-query';
 import App from '../App';
+import { NoRefreshSessionError } from '../auth/session';
 import { fixtureId, fixtureRuntime, scenarios } from '../preview/fixtures';
 import { createRuntime, unavailableRuntime } from '../runtime';
 import { harness, response } from './helpers';
@@ -188,6 +189,41 @@ test('empty and unavailable scenarios are explicit and never call global fetch',
     await screen.findAllByText('Current read unavailable'),
   ).not.toHaveLength(0);
   expect(globalThis.fetch).not.toHaveBeenCalled();
+  runtime.dispose();
+});
+test('verified adapter can restore a browser session from the sign-in screen', async () => {
+  const { session, adapter } = harness();
+  const runtime = createRuntime('verified-adapter', session, {
+    dispatch: false,
+    fleet: false,
+    orchestration: false,
+  });
+  render(<App runtime={runtime} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Restore secure browser session' }),
+  );
+  expect(
+    await screen.findByRole('heading', { name: 'Operations overview' }),
+  ).toBeTruthy();
+  expect(adapter.refresh).toHaveBeenCalledTimes(1);
+  runtime.dispose();
+});
+test('restoring without a gateway session leaves manager sign-in available', async () => {
+  const { session, adapter } = harness();
+  adapter.refresh.mockRejectedValueOnce(new NoRefreshSessionError());
+  const runtime = createRuntime('verified-adapter', session, {
+    dispatch: false,
+    fleet: false,
+    orchestration: false,
+  });
+  render(<App runtime={runtime} />);
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Restore secure browser session' }),
+    );
+  });
+  expect(session.snapshot().phase).toBe('signedOut');
+  expect(screen.getByRole('button', { name: 'Request code' })).toBeTruthy();
   runtime.dispose();
 });
 test('manual refresh failure hides prior successful results and raw API error bodies', async () => {

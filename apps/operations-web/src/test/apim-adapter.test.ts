@@ -46,6 +46,16 @@ function lock(): CookieOperationLock {
     },
   };
 }
+const markers = new Map<string, string>();
+const storage = {
+  getItem: (key: string) => markers.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    markers.set(key, value);
+  },
+  removeItem: (key: string) => {
+    markers.delete(key);
+  },
+};
 function harness(timeoutMs = 1000, locks = lock()) {
   const fetcher = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
     async (input) =>
@@ -56,6 +66,7 @@ function harness(timeoutMs = 1000, locks = lock()) {
           : json(access()),
   );
   const adapter = createApimWebSessionAdapter(config(), {
+    storage,
     browserOrigin: config().browserOrigin,
     fetcher,
     locks,
@@ -64,6 +75,7 @@ function harness(timeoutMs = 1000, locks = lock()) {
   return { adapter, fetcher, locks };
 }
 const signal = () => new AbortController().signal;
+beforeEach(() => markers.clear());
 test.each([
   'wrongKeys',
   'stringApproval',
@@ -84,6 +96,7 @@ test.each([
   if (variant === 'routeNewline') configuration.routes.refresh += '\n';
   const fetcher = jest.fn();
   const adapter = createApimWebSessionAdapter(configuration, {
+    storage,
     browserOrigin: config().browserOrigin,
     fetcher,
     locks: lock(),
@@ -106,6 +119,7 @@ test.each([
   if (kind === 'badCsrf') c.csrf.header = 'X-Bad\r\nHeader';
   if (kind === 'prod') c.environment = 'prod' as 'nonprod';
   const adapter = createApimWebSessionAdapter(kind === 'missing' ? null : c, {
+    storage,
     browserOrigin:
       kind === 'foreignOrigin' ? 'https://evil.invalid' : c.browserOrigin,
     fetcher: jest.fn(),
@@ -208,6 +222,10 @@ test('credential-bearing redirects and non-JSON responses are rejected', async (
   await expect(adapter.refresh(signal())).rejects.toMatchObject({
     kind: 'invalid',
   });
+  await expect(adapter.refresh(signal())).rejects.toMatchObject({
+    kind: 'logoutRequired',
+  });
+  await adapter.logout(signal());
   fetcher.mockResolvedValueOnce({
     ...json(access()),
     headers: new Headers({ 'Content-Type': 'text/html' }),
@@ -251,6 +269,72 @@ test('timeout returns promptly but logout waits for the earlier Set-Cookie-capab
   await logout;
   expect(fetcher).toHaveBeenCalledTimes(3);
   expect(String(fetcher.mock.calls[2][0])).toMatch(/logout$/);
+});
+test('ambiguous verify survives a new adapter and blocks refresh until ordered cleanup', async () => {
+  const shared = lock();
+  const first = harness(25, shared);
+  const second = harness(1000, shared);
+  const late = deferred<Response>();
+  first.fetcher
+    .mockResolvedValueOnce(json(null, 204))
+    .mockReturnValueOnce(late.promise);
+
+  await expect(
+    first.adapter.verifyOtp(verifyBody, signal()),
+  ).rejects.toMatchObject({
+    kind: 'uncertain',
+  });
+  expect([...markers.values()]).toEqual(['1']);
+  const restore = second.adapter.refresh(signal());
+  late.resolve(json(access()));
+  await expect(restore).rejects.toMatchObject({ kind: 'logoutRequired' });
+  expect(second.fetcher).not.toHaveBeenCalled();
+
+  await second.adapter.logout(signal());
+  expect(markers.size).toBe(0);
+  await expect(first.adapter.refresh(signal())).resolves.toEqual(access());
+});
+test('deadline aborts the browser request and allows ordered cleanup after it settles', async () => {
+  const { adapter, fetcher } = harness(25);
+  let requestSignal: AbortSignal | undefined;
+  fetcher
+    .mockResolvedValueOnce(json(null, 204))
+    .mockImplementationOnce((_input, options) => {
+      requestSignal = options?.signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        requestSignal?.addEventListener(
+          'abort',
+          () => reject(new Error('aborted')),
+          { once: true },
+        );
+      });
+    });
+
+  await expect(adapter.verifyOtp(verifyBody, signal())).rejects.toMatchObject({
+    kind: 'uncertain',
+  });
+  expect(requestSignal?.aborted).toBe(true);
+  await adapter.logout(signal());
+  expect(markers.size).toBe(0);
+});
+test('a failed shared marker write prevents the cookie request', async () => {
+  const fetcher = jest.fn();
+  const adapter = createApimWebSessionAdapter(config(), {
+    browserOrigin: config().browserOrigin,
+    fetcher,
+    locks: lock(),
+    storage: {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('storage unavailable');
+      },
+      removeItem: jest.fn(),
+    },
+  });
+  await expect(adapter.verifyOtp(verifyBody, signal())).rejects.toMatchObject({
+    kind: 'unavailable',
+  });
+  expect(fetcher).not.toHaveBeenCalled();
 });
 test('cancelled queued cookie operations cannot overtake an in-flight response across adapter instances', async () => {
   const shared = lock(),
@@ -297,6 +381,7 @@ test('approved transport configuration and OTP identities are snapshotted before
       String(input).endsWith('/logout') ? json(null, 204) : json(access()),
   );
   const adapter = createApimWebSessionAdapter(configuration, {
+    storage,
     browserOrigin: configuration.browserOrigin,
     fetcher,
     locks: shared,

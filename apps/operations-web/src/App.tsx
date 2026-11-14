@@ -220,7 +220,20 @@ function Admission({ runtime }: { runtime: Runtime }) {
                 </button>
               </>
             ) : (
-              <Login runtime={runtime} />
+              <>
+                <Login runtime={runtime} />
+                <button
+                  disabled={
+                    state.phase === 'checking' ||
+                    state.phase === 'authenticating'
+                  }
+                  onClick={() => {
+                    void runtime.session.restore();
+                  }}
+                >
+                  Restore secure browser session
+                </button>
+              </>
             )}
           </>
         )}
