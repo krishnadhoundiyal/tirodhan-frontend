@@ -89,7 +89,9 @@ export function validateConfiguration(config) {
   if (
     !/^X-[A-Za-z0-9-]{3,70}$/i.test(config.csrf?.header ?? '') ||
     /[\r\n]/.test(config.csrf.header) ||
-    /^(x-forwarded-|x-ms-|x-apim-|x-http-method)/i.test(config.csrf.header) ||
+    /^(x-forwarded-|x-ms-|x-apim-|x-http-method|x-gateway-secret$)/i.test(
+      config.csrf.header,
+    ) ||
     !/^[A-Za-z0-9_-]{1,64}$/.test(config.csrf?.value ?? '') ||
     /[\r\n]/.test(config.csrf.value)
   )
@@ -176,6 +178,7 @@ export async function render(config) {
 <rewrite-uri template="${attr(expr(`(string)${value('admission', 'backendPath')}`))}" copy-unmatched-params="false"/>
 <set-method>POST</set-method>
 <set-header name="Cookie" exists-action="delete"/><set-header name="Authorization" exists-action="delete"/><set-header name="Ocp-Apim-Subscription-Key" exists-action="delete"/>
+<set-header name="X-Gateway-Secret" exists-action="override"><value>{{gateway-secret}}</value></set-header>
 ${header('Content-Type', 'application/json')}${header('Accept', 'application/json')}${header('Cache-Control', 'no-store')}
 <set-body>${xml(expr(`(string)${value('admission', 'requestBody')}`))}</set-body>
 </inbound><backend><forward-request timeout="10" follow-redirects="false" buffer-request-body="false" fail-on-error-status-code="false"/></backend><outbound>

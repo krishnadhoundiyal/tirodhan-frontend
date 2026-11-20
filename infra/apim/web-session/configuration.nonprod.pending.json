@@ -1,0 +1,35 @@
+{
+  "approved": false,
+  "approvalReference": null,
+  "environment": "nonprod",
+  "gatewayOrigin": "https://api-nonprod.qtkservice.com",
+  "backendOrigin": "https://tirodhan-np-tdnp01-api.gentlepond-c2abba96.centralindia.azurecontainerapps.io",
+  "routes": {
+    "start": "/web/session/otp/start",
+    "verify": "/web/session/otp/verify",
+    "refresh": "/web/session/refresh",
+    "logout": "/web/session/logout"
+  },
+  "csrf": {
+    "header": "X-Tirodhan-Web-Session",
+    "value": "1"
+  },
+  "products": {
+    "operations": {
+      "origin": "https://manager-nonprod.qtkservice.com",
+      "cookieName": "__Host-tirodhan-operations-refresh"
+    },
+    "customer": {
+      "origin": "https://customer-nonprod.qtkservice.com",
+      "cookieName": "__Host-tirodhan-customer-refresh"
+    }
+  },
+  "cookie": {
+    "sameSite": "Strict",
+    "sameSiteJustification": "Proposed for review: the three HTTPS browser-facing hosts share the qtkservice.com site. Verify cookie delivery in the live POC.",
+    "maxAgeSeconds": 604800
+  },
+  "backendRefreshTtlSeconds": 604800,
+  "diagnosticsReviewed": false,
+  "effectivePolicyReviewed": false
+}

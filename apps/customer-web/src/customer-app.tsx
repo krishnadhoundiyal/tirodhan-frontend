@@ -158,8 +158,7 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
               <h2>What your account will include</h2>
               <p>
                 Your complete collection journey, including saved addresses,
-                booking, payment, activity and account preferences. Live access
-                awaits verified secure browser authentication.
+                booking, payment, activity and account preferences.
               </p>
             </div>
           </>

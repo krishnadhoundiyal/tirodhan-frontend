@@ -2,10 +2,11 @@
 
 **PROPOSED — NOT APPROVED. NOT DEPLOYED. Production gate remains closed.**
 
-No concrete gateway, resource ID, browser origin, cookie name, route or CSRF
-header has been approved. The checked-in environment manifest has null values
-and approval false. Its rendered policy denies every request. The following
-names are review proposals only; code has no enabled defaults for them:
+The generic manifest has null environment values and approval false. Its
+rendered policy denies every request. The
+[NONPROD review manifest](../infra/apim/web-session/configuration.nonprod.pending.json)
+contains the exact inputs for backend PR #133 with approval still pending.
+Both manifests keep the activation gate closed:
 
 | Item                     | PROPOSED — NOT APPROVED              |
 | ------------------------ | ------------------------------------ |
@@ -31,8 +32,10 @@ The separate frontend configuration contains the approved Operations origin,
 gateway origin, four routes and CSRF marker; it contains no cookie credential,
 refresh-token key, Azure secret or role assertion. The adapter requires Web Locks
 and exact current browser origin. Only nonprod is supported by this POC factory.
-`main.tsx` never imports or invokes it. Even approved-looking inputs cannot
-silently activate the production composition.
+Both web release entry points can compose the adapter from the same-origin
+runtime configuration. The ACA image defaults to disabled. Enable the adapter
+only after live NONPROD acceptance and exact configuration approval. See the
+[ACA handoff](WEB_NONPROD_ACA_HANDOFF.md) for deployment inputs and acceptance.
 
 ## Exact upstream authority
 

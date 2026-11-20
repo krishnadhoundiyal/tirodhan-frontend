@@ -11,7 +11,7 @@ if (path === '/account' || path.startsWith('/account/')) {
       import.meta.env.DEV &&
       import.meta.env.VITE_CUSTOMER_FIXTURE === 'true'
         ? (await import('./fixture')).fixtureRuntime()
-        : (await import('./runtime')).productionRuntime();
+        : await (await import('./runtime')).releaseRuntime();
     mountCustomer(root, runtime);
   })();
 } else if (__CUSTOMER_DEV_SERVER__)

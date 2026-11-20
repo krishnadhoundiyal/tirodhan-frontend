@@ -108,8 +108,6 @@ export function AuthForm({ runtime }: { runtime: Runtime }) {
       <p className="fine">
         <a href="/policies/terms">Service terms</a> ·{' '}
         <a href="/policies/privacy">Privacy publication status</a>.
-        Authentication remains unavailable until approved secure web integration
-        is verified.
       </p>
     </section>
   );

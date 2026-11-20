@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { ManagerSession, unavailableAdapter } from './auth/session';
+import { createApimWebSessionAdapter } from './auth/apim-adapter';
+import { readSessionConfiguration } from './auth/release-config';
 import { CommandStore } from './command-store';
 
 export interface Capabilities {
@@ -103,6 +105,29 @@ export function unavailableRuntime(
   return createRuntime(
     'unavailable',
     new ManagerSession(unavailableAdapter, origin, fetch),
+    capabilities,
+  );
+}
+
+export async function releaseRuntime(
+  capabilities: Capabilities,
+  browserOrigin = window.location.origin,
+  locks = navigator.locks,
+  fetcher = window.fetch.bind(window),
+) {
+  const config = await readSessionConfiguration(browserOrigin, fetcher);
+  const adapter = createApimWebSessionAdapter(config, {
+    browserOrigin,
+    locks,
+    fetcher,
+  });
+  return createRuntime(
+    adapter.available ? 'verified-adapter' : 'unavailable',
+    new ManagerSession(
+      adapter,
+      adapter.available ? config!.gatewayOrigin : null,
+      fetcher,
+    ),
     capabilities,
   );
 }

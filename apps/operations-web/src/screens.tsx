@@ -416,7 +416,12 @@ export function Routes({
       />
       {runtime.capabilities.dispatch ? (
         <>
-          <Lookup label="Route UUID" onSelect={setRouteId} initial={routeId} />
+          <Lookup
+            key={routeId}
+            label="Route UUID"
+            onSelect={setRouteId}
+            initial={routeId}
+          />
           {routeId && (
             <ReadPanel
               runtime={runtime}

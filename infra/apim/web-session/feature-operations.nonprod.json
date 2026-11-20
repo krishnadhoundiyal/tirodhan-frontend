@@ -1,0 +1,154 @@
+{
+  "customer_slot_booking": {
+    "api_prefix": "/v2",
+    "required_for_initial_build": true,
+    "operations": {
+      "customer-slot-availability": {
+        "method": "GET",
+        "path": "/customer/slot-availability"
+      },
+      "customer-slot-hold-create": {
+        "method": "POST",
+        "path": "/customer/slot-holds"
+      },
+      "customer-slot-hold-read": {
+        "method": "GET",
+        "path": "/customer/slot-holds/{reservation_id}"
+      }
+    }
+  },
+  "customer_checkout": {
+    "api_prefix": "/v1",
+    "required_for_initial_build": false,
+    "operations": {
+      "customer-payment-attempt-create": {
+        "method": "POST",
+        "path": "/payments/collection-requests/{request_id}/attempts"
+      },
+      "customer-checkout-parameters": {
+        "method": "GET",
+        "path": "/customer/payment-attempts/{payment_attempt_id}/checkout"
+      }
+    }
+  },
+  "customer_account_capabilities": {
+    "api_prefix": "/v1",
+    "required_for_initial_build": false,
+    "operations": {
+      "customer-profile-read": {
+        "method": "GET",
+        "path": "/customer/me/profile"
+      },
+      "customer-profile-update": {
+        "method": "PUT",
+        "path": "/customer/me/profile"
+      },
+      "customer-preferences-read": {
+        "method": "GET",
+        "path": "/customer/me/preferences"
+      },
+      "customer-preferences-update": {
+        "method": "PUT",
+        "path": "/customer/me/preferences"
+      },
+      "customer-favourites-read": {
+        "method": "GET",
+        "path": "/customer/me/favourite-categories"
+      },
+      "customer-favourites-update": {
+        "method": "PUT",
+        "path": "/customer/me/favourite-categories"
+      },
+      "customer-notification-list": {
+        "method": "GET",
+        "path": "/customer/notifications"
+      },
+      "customer-payment-method-list": {
+        "method": "GET",
+        "path": "/customer/payment-methods"
+      },
+      "customer-feedback-create": {
+        "method": "POST",
+        "path": "/customer/feedback"
+      },
+      "customer-content-about": {
+        "method": "GET",
+        "path": "/content/about"
+      },
+      "customer-content-help": {
+        "method": "GET",
+        "path": "/content/help"
+      },
+      "customer-content-terms": {
+        "method": "GET",
+        "path": "/content/terms"
+      },
+      "customer-content-privacy": {
+        "method": "GET",
+        "path": "/content/privacy"
+      }
+    }
+  },
+  "manager_dispatch": {
+    "api_prefix": "/v2",
+    "required_for_initial_build": false,
+    "operations": {
+      "manager-route-read": {
+        "method": "GET",
+        "path": "/manager/routes/{route_id}"
+      }
+    }
+  },
+  "manager_fleet": {
+    "api_prefix": "/v2",
+    "required_for_initial_build": false,
+    "operations": {
+      "manager-fleet-backlog": {
+        "method": "GET",
+        "path": "/manager/fleet/backlog"
+      },
+      "manager-fleet-status": {
+        "method": "GET",
+        "path": "/manager/fleet/status"
+      }
+    }
+  },
+  "manager_orchestration": {
+    "api_prefix": "/v2",
+    "required_for_initial_build": false,
+    "operations": {
+      "manager-region-capacity": {
+        "method": "GET",
+        "path": "/manager/regions/{region_id}/capacity"
+      },
+      "manager-rider-recovery-state": {
+        "method": "GET",
+        "path": "/manager/riders/{rider_id}/recovery-state"
+      },
+      "manager-rider-failure-read": {
+        "method": "GET",
+        "path": "/manager/rider-failures/{incident_id}"
+      },
+      "manager-rider-failure-command": {
+        "method": "POST",
+        "path": "/manager/rider-failures"
+      },
+      "manager-replacement-list": {
+        "method": "GET",
+        "path": "/manager/replacements"
+      },
+      "manager-replacement-read": {
+        "method": "GET",
+        "path": "/manager/replacements/{replacement_id}"
+      },
+      "manager-replacement-evaluations": {
+        "method": "GET",
+        "path": "/manager/replacements/{replacement_id}/evaluations"
+      },
+      "manager-replacement-select": {
+        "method": "POST",
+        "path": "/manager/replacements/{replacement_id}/select"
+      }
+    }
+  }
+}

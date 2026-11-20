@@ -1,5 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from 'react';
 import type { Runtime } from './runtime';
 import {
   Account,
@@ -23,6 +29,18 @@ const sections = [
   'Account',
 ] as const;
 type Section = (typeof sections)[number];
+const routeUuid =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function currentLocation(): { section: Section; routeId?: string } {
+  const [, area, id] = window.location.pathname.split('/');
+  const section =
+    sections.find((item) => item.toLowerCase() === area?.toLowerCase()) ??
+    'Overview';
+  return {
+    section,
+    routeId: section === 'Routes' && routeUuid.test(id ?? '') ? id : undefined,
+  };
+}
 function Login({ runtime }: { runtime: Runtime }) {
   const admission = useSyncExternalStore(
     runtime.session.subscribe,
@@ -120,8 +138,21 @@ function Login({ runtime }: { runtime: Runtime }) {
       <button
         type="button"
         className="secondary"
+        disabled={
+          busy ||
+          admission.phase === 'checking' ||
+          admission.phase === 'authenticating'
+        }
         onClick={() => {
-          void runtime.session.logout();
+          void runtime.session.logout().then(() => {
+            if (runtime.session.snapshot().logoutUnconfirmed) return;
+            startCommand.current = null;
+            verifyCommand.current = null;
+            setCode('');
+            setPhone('');
+            setChallenge(undefined);
+            setMessage('');
+          });
         }}
       >
         Start another sign-in
@@ -159,19 +190,7 @@ function Admission({ runtime }: { runtime: Runtime }) {
         </h1>
         {state.phase === 'unavailable' ? (
           <>
-            <p>
-              Live sign-in is gated on verification of the APIM Web Session
-              Adapter. No credentials can be entered or sent from this build.
-            </p>
-            <p>
-              The required gateway cookie, origin, CSRF and refresh-response
-              checks are documented in{' '}
-              <code>OPERATIONS_WEB_AUTH_POC_REQUIREMENTS.md</code>.
-            </p>
-            <div className="admission-note">
-              This console is read-only. Production login and operational
-              commands are unavailable in OW-P0-01.
-            </div>
+            <p>Sign-in is unavailable in this environment.</p>
           </>
         ) : (
           <>
@@ -242,12 +261,34 @@ function Admission({ runtime }: { runtime: Runtime }) {
   );
 }
 function Shell({ runtime }: { runtime: Runtime }) {
-  const [section, setSection] = useState<Section>('Overview'),
-    [routeId, setRouteId] = useState<string>();
-  const openRoute = (id: string) => {
-    setRouteId(id);
-    setSection('Routes');
+  const useLocation = runtime.kind === 'verified-adapter';
+  const [{ section, routeId }, setLocation] = useState<{
+    section: Section;
+    routeId?: string;
+  }>(() => (useLocation ? currentLocation() : { section: 'Overview' }));
+  useEffect(() => {
+    if (!useLocation) return;
+    const syncLocation = () => setLocation(currentLocation());
+    window.addEventListener('popstate', syncLocation);
+    return () => window.removeEventListener('popstate', syncLocation);
+  }, [useLocation]);
+  const navigate = (next: Section, id?: string) => {
+    if (useLocation) {
+      const path =
+        next === 'Overview'
+          ? '/'
+          : '/' +
+            next.toLowerCase() +
+            (id && routeUuid.test(id) ? '/' + id : '');
+      if (window.location.pathname !== path)
+        window.history.pushState(null, '', path);
+    }
+    setLocation((previous) => ({
+      section: next,
+      routeId: id ?? previous.routeId,
+    }));
   };
+  const openRoute = (id: string) => navigate('Routes', id);
   const screen =
     section === 'Overview' ? (
       <Overview runtime={runtime} />
@@ -256,7 +297,7 @@ function Shell({ runtime }: { runtime: Runtime }) {
     ) : section === 'Assignments' ? (
       <Assignments runtime={runtime} />
     ) : section === 'Routes' ? (
-      <Routes runtime={runtime} routeId={routeId} setRouteId={setRouteId} />
+      <Routes runtime={runtime} routeId={routeId} setRouteId={openRoute} />
     ) : section === 'Recovery' ? (
       <Recovery runtime={runtime} />
     ) : section === 'Incidents' ? (
@@ -286,7 +327,9 @@ function Shell({ runtime }: { runtime: Runtime }) {
             {sections.map((item, index) => (
               <li key={item}>
                 <button
-                  onClick={() => setSection(item)}
+                  onClick={() =>
+                    navigate(item, item === 'Routes' ? routeId : undefined)
+                  }
                   aria-current={section === item ? 'page' : undefined}
                 >
                   <span className="nav-number" aria-hidden="true">

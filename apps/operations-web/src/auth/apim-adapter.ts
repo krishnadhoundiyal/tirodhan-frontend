@@ -93,7 +93,9 @@ export function validateApimConfiguration(
   if (
     !/^X-[A-Za-z0-9-]{3,70}$/i.test(value.csrf.header) ||
     /[\r\n]/.test(value.csrf.header) ||
-    /^(x-forwarded-|x-ms-|x-apim-|x-http-method)/i.test(value.csrf.header) ||
+    /^(x-forwarded-|x-ms-|x-apim-|x-http-method|x-gateway-secret$)/i.test(
+      value.csrf.header,
+    ) ||
     !/^[A-Za-z0-9_-]{1,64}$/.test(value.csrf.value) ||
     /[\r\n]/.test(value.csrf.value)
   )
@@ -145,7 +147,7 @@ interface Dependencies {
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 }
 
-/** Not composed into main.tsx. Approval inputs alone never enable production login. */
+/** Available only for an approved NONPROD configuration and its exact browser origin. */
 export function createApimWebSessionAdapter(
   configuration: ApimSessionConfiguration | null,
   dependencies: Dependencies,

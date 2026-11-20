@@ -9,6 +9,7 @@
 <rewrite-uri template="@((string)JObject.Parse((string)context.Variables[&quot;admission&quot;])[&quot;backendPath&quot;])" copy-unmatched-params="false"/>
 <set-method>POST</set-method>
 <set-header name="Cookie" exists-action="delete"/><set-header name="Authorization" exists-action="delete"/><set-header name="Ocp-Apim-Subscription-Key" exists-action="delete"/>
+<set-header name="X-Gateway-Secret" exists-action="override"><value>{{gateway-secret}}</value></set-header>
 <set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-header name="Accept" exists-action="override"><value>application/json</value></set-header><set-header name="Cache-Control" exists-action="override"><value>no-store</value></set-header>
 <set-body>@((string)JObject.Parse((string)context.Variables[&quot;admission&quot;])[&quot;requestBody&quot;])</set-body>
 </inbound><backend><forward-request timeout="10" follow-redirects="false" buffer-request-body="false" fail-on-error-status-code="false"/></backend><outbound>

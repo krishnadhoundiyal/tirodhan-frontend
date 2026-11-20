@@ -15,6 +15,7 @@ import {
  * Implementations must serialize cookie operations across tabs and handle ambiguous verify/logout. */
 export interface WebSessionAdapter {
   readonly available: boolean;
+  requiresLogout?(): boolean;
   startOtp(
     body: { client_request_id: string; phone: string },
     signal: AbortSignal,
@@ -95,11 +96,17 @@ export class CustomerSession {
       )
         throw new CustomerError('invalid');
     }
+    const available = !!origin && adapter.available;
+    const logoutUnconfirmed = available && adapter.requiresLogout?.() === true;
     this.#state = {
-      phase: origin && adapter.available ? 'signedOut' : 'unavailable',
+      phase: !available
+        ? 'unavailable'
+        : logoutUnconfirmed
+          ? 'error'
+          : 'signedOut',
       epoch: 0,
       principal: null,
-      logoutUnconfirmed: false,
+      logoutUnconfirmed,
       cleanupPending: false,
       invalidation: 'session',
     };
@@ -277,11 +284,19 @@ export class CustomerSession {
     const request = { ...this.#otpStart! },
       epoch = this.#state.epoch;
     const task = (async () => {
-      const result = await this.#bounded((s) =>
-        this.adapter.startOtp(request, s),
-      );
-      this.#current(epoch);
-      return uuid(record(result, ['challenge_reference']).challenge_reference);
+      try {
+        const result = await this.#bounded((s) =>
+          this.adapter.startOtp(request, s),
+        );
+        this.#current(epoch);
+        return uuid(
+          record(result, ['challenge_reference']).challenge_reference,
+        );
+      } catch (error) {
+        if (epoch === this.#state.epoch && this.adapter.requiresLogout?.())
+          this.#clear('error', true);
+        throw error;
+      }
     })();
     this.#startFlight = task;
     void task

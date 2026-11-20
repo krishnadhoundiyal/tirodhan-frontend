@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { CustomerSession, unavailableAdapter } from './auth/session';
+import { createApimWebSessionAdapter } from './auth/apim-adapter';
+import { readSessionConfiguration } from './auth/release-config';
 import { CustomerApi } from './api/customer';
 import type { ReactNode } from 'react';
 import {
@@ -83,3 +85,23 @@ export function createRuntime(
 export type Runtime = ReturnType<typeof createRuntime>;
 export const productionRuntime = () =>
   createRuntime(new CustomerSession(unavailableAdapter, null, fetch));
+
+export async function releaseRuntime(
+  browserOrigin = window.location.origin,
+  locks = navigator.locks,
+  fetcher = window.fetch.bind(window),
+) {
+  const config = await readSessionConfiguration(browserOrigin, fetcher);
+  const adapter = createApimWebSessionAdapter(config, {
+    browserOrigin,
+    locks,
+    fetcher,
+  });
+  return createRuntime(
+    new CustomerSession(
+      adapter,
+      adapter.available ? config!.gatewayOrigin : null,
+      fetcher,
+    ),
+  );
+}
