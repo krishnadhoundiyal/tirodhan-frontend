@@ -21,7 +21,13 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-secure-store',
     'expo-font',
-    ['expo-splash-screen', { backgroundColor: '#F8F5EF' }],
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#F8F5EF',
+        android: { drawable: { icon: './assets/lotus-splash.xml' } },
+      },
+    ],
     [
       'expo-location',
       {
