@@ -14,6 +14,14 @@ No guessed gateway, origin, cookie, CSRF name or resource ID is an enabled defau
 wildcards, unsafe paths/headers and a cookie age beyond the verified backend TTL.
 Approval metadata is a prerequisite, not evidence of real APIM acceptance.
 
+For backend PR #133, use `configuration.nonprod.pending.json` to review the
+exact NONPROD origins, routes, cookies, CSRF marker and 604800-second refresh
+lifetime. The renderer tests exercise the confirmed technical inputs with
+synthetic approval in memory. The checked-in configuration stays disabled.
+The [handoff](../../../docs/WEB_NONPROD_ACA_HANDOFF.md) explains which route
+map feeds Terraform, which routes require additional rollout work, and how
+to record the XML digest and frontend source commit after approval.
+
 ```powershell
 node infra/apim/web-session/render.mjs
 node --test infra/apim/web-session/render.test.mjs
@@ -63,3 +71,39 @@ browser JavaScript through permissive CORS. No backend CORS change is made here.
 
 See the four OW-P0-03 documents in `docs/` for proposed names, missing approvals,
 actual observations, security test boundaries and acceptance requirements.
+
+## Gateway invocation dependency
+
+Every forwarded candidate web-auth request overrides `X-Gateway-Secret` with the
+APIM secret named value `gateway-secret`. A caller-supplied value is never trusted.
+Before policy upload, Terraform must bind that named value to the same independent
+Key Vault secret referenced by the API's `TIRODHAN_GATEWAY_SECRET`, and grant the
+APIM managed identity the required secret-read access. The secret value never
+belongs in this manifest, frontend environment, bundle, or policy source.
+
+This source change does not create the named value, enable the manifest, register
+APIs, or prove real gateway invocation. Native auth and Bearer business APIs need
+the same override in their separately reviewed APIM forwarding policies. Their
+browser/raw-auth boundary and all diagnostics still require live POC acceptance.
+
+## Coordinated gateway-secret rotation
+
+The current backend Terraform constructs versionless Key Vault secret references.
+The APIM named value is still an undeployed prerequisite. APIM and Container Apps
+refresh their secret references independently; changing the Key Vault value alone
+can make the API and gateway disagree and reject all forwarded requests.
+
+Until overlapping backend credentials are explicitly implemented, rotate only in
+a reviewed maintenance release. First pause ordinary upstream forwarding at APIM.
+Then enroll the new independent secret through the signed secret-seeding path,
+refresh the APIM named value explicitly, and replace/restart the API revision so
+its process reads the new value. Do not rely on either platform's polling delay
+or assume these updates are atomic. Keep traffic paused on any uncertain result.
+
+Before restoring ordinary forwarding, use a restricted synthetic acceptance path
+to verify successful APIM-authenticated invocation and rejection of missing/wrong
+gateway headers. Confirm the same intended secret version at both bindings without
+recording its value. Rollback must restore both bindings together while forwarding
+stays paused. This procedure deliberately has a maintenance window; continuous
+availability needs a separately implemented bounded overlap protocol. None of
+these cloud operations is executed by this source change.

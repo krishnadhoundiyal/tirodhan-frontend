@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { unavailableRuntime, type Capabilities, type Runtime } from './runtime';
+import { releaseRuntime, type Capabilities, type Runtime } from './runtime';
 import './styles.css';
 
 async function start() {
@@ -23,18 +23,7 @@ async function start() {
       orchestration:
         fleet && import.meta.env.VITE_OPERATIONS_V2_ORCHESTRATION === 'true',
     };
-    try {
-      runtime = unavailableRuntime(
-        import.meta.env.VITE_OPERATIONS_API_ORIGIN || null,
-        capabilities,
-      );
-    } catch {
-      runtime = unavailableRuntime(null, {
-        dispatch: false,
-        fleet: false,
-        orchestration: false,
-      });
-    }
+    runtime = await releaseRuntime(capabilities);
   }
   createRoot(document.getElementById('root')!).render(
     <App runtime={runtime} />,

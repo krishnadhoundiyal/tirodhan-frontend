@@ -15,6 +15,10 @@ assert root.find("backend/forward-request").attrib["timeout"] == "10"
 assert root.find("inbound/rewrite-uri").attrib["copy-unmatched-params"] == "false"
 assert "OriginalUrl.Query.Count == 0" in variables["admission"]
 assert not any(node.tag in {"base", "retry", "trace", "log-to-eventhub", "cache-store", "cache-lookup"} for node in root.iter())
+gateway_headers = root.findall('inbound/set-header[@name="X-Gateway-Secret"]')
+assert len(gateway_headers) == 1
+assert gateway_headers[0].attrib["exists-action"] == "override"
+assert gateway_headers[0].findtext("value") == "{{gateway-secret}}"
 for returned in root.findall(".//return-response"):
     headers = {node.attrib["name"]: node.findtext("value") for node in returned.findall("set-header")}
     assert headers["Cache-Control"] == "private, no-store, max-age=0"

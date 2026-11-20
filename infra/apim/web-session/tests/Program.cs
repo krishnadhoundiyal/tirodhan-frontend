@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
@@ -25,6 +26,26 @@ public class Program {
     return grant;
   }
   public static void Main() {
+    var nonprod = JObject.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "configuration.nonprod.pending.json")));
+    var marker = (string)nonprod["csrf"]["header"];
+    foreach (var product in ((JObject)nonprod["products"]).Properties())
+      foreach (var route in ((JObject)nonprod["routes"]).Properties()) {
+        var origin = (string)product.Value["origin"];
+        var path = (string)route.Value;
+        Check((int)Admit(origin:origin,path:path,config:nonprod,method:"OPTIONS",requestedMethod:"POST",requestedHeaders:"content-type, "+marker)["status"]==403,"pending NONPROD denies preflight");
+      }
+    // Test-only clone. No approved manifest or deployable XML is written.
+    nonprod["approved"] = nonprod["diagnosticsReviewed"] = nonprod["effectivePolicyReviewed"] = true;
+    nonprod["approvalReference"] = "LOCAL TEST ONLY";
+    foreach (var product in ((JObject)nonprod["products"]).Properties())
+      foreach (var route in ((JObject)nonprod["routes"]).Properties()) {
+        var origin = (string)product.Value["origin"];
+        var path = (string)route.Value;
+        var preflight = Admit(origin:origin,path:path,config:nonprod,method:"OPTIONS",requestedMethod:"POST",requestedHeaders:marker.ToLowerInvariant()+", content-type");
+        Check((int)preflight["status"]==204 && (string)preflight["origin"]==origin && preflight["backendPath"]==null,"exact NONPROD route and origin preflight");
+        Check((int)Admit(origin:origin,path:path,config:nonprod,method:"OPTIONS",requestedMethod:"POST",requestedHeaders:"content-type")["status"]==403,"exact NONPROD preflight requires CSRF header");
+        Check((int)Admit(origin:origin,path:path,config:nonprod,method:"OPTIONS",requestedMethod:"POST",requestedHeaders:"content-type, x-gateway-secret")["status"]==403,"upstream secret header is forbidden in NONPROD preflight");
+      }
     foreach (var origin in new [] {"", "null", "https://evil.invalid", Ops+".evil.invalid", Ops+"/", Ops+":443", "http://operations.local-test.invalid", Ops+"\r\nX-Evil: x"}) Check((int)Admit(origin:origin)["status"]==403,"foreign origin denied");
     foreach (var csrf in new [] {"", "bad", "test\r\n"}) Check((int)Admit(csrf:csrf)["status"]==403,"CSRF denied");
     foreach (var method in new [] {"GET","PUT","DELETE"}) Check((int)Admit(method:method)["status"]==403,"method denied");
@@ -44,6 +65,15 @@ public class Program {
     var customer=Admit(origin:Customer,cookie:"__Host-test-ops="+Refresh+"; __Host-test-customer="+new string('B',43));
     Check((string)customer["cookieName"]=="__Host-test-customer","origin chooses isolated cookie");
     Check(JObject.Parse((string)customer["requestBody"])["refresh_token"].ToString()==new string('B',43),"other product not selected");
+    var bothCookies="__Host-test-ops="+Refresh+"; __Host-test-customer="+new string('B',43);
+    var managerLogout=Admit(path:"/test-session/logout",cookie:bothCookies);
+    Check(JObject.Parse((string)managerLogout["requestBody"])["refresh_token"].ToString()==Refresh,"manager logout revokes only the manager session");
+    var afterManagerLogout=Admit(origin:Customer,cookie:"__Host-test-customer="+new string('B',43));
+    Check(JObject.Parse((string)afterManagerLogout["requestBody"])["refresh_token"].ToString()==new string('B',43),"customer refresh survives manager logout");
+    var customerLogout=Admit(origin:Customer,path:"/test-session/logout",cookie:bothCookies);
+    Check(JObject.Parse((string)customerLogout["requestBody"])["refresh_token"].ToString()==new string('B',43),"customer logout revokes only the customer session");
+    var afterCustomerLogout=Admit(cookie:"__Host-test-ops="+Refresh);
+    Check(JObject.Parse((string)afterCustomerLogout["requestBody"])["refresh_token"].ToString()==Refresh,"manager refresh survives customer logout");
     var start=Admit(path:"/test-session/start",body:"{'client_request_id':'"+Owner+"','phone':'+919999999999'}"); Check((int)start["status"]==0,"start admitted"); Check((string)start["backendPath"]=="/v1/auth/otp/start","start authority");
     var verify=Admit(path:"/test-session/verify",body:"{'client_login_id':'"+Owner+"','challenge_reference':'"+Owner+"','code':'123456'}"); Check((int)verify["status"]==0,"verify admitted");
     foreach(var input in new [] {"null", "[]", "not json", "{'role':'MANAGER'}", "{'client_login_id':123,'code':'123456'}"}) Check((int)Admit(path:"/test-session/verify",body:input)["status"]==422,"malformed request denied");

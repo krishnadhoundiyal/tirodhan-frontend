@@ -15,8 +15,10 @@ Status: **LOCAL IMPLEMENTATION TESTED; REAL APIM/BROWSER ACCEPTANCE NOT PROVEN**
 - Python standard-library XML checks verify well-formedness, exact embedded source,
   forwarding bounds, query rejection, constructed response/error paths and disabled
   configuration. These do not validate Azure's gateway context wrappers/compiler.
-- Existing production fixture-isolation and build checks remain mandatory. The
-  concrete adapter is not imported by production composition.
+- Both release compositions exercise the concrete adapters with synthetic
+  configuration and responses. Production fixture-isolation and build checks
+  remain mandatory. The runtime gate and evidence required to enable NONPROD
+  sign-in are documented in the [ACA handoff](WEB_NONPROD_ACA_HANDOFF.md).
 
 ## Security coverage and limits
 

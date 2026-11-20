@@ -1,0 +1,41 @@
+FROM node:24-bookworm-slim AS tools
+WORKDIR /workspace
+RUN npm install --global pnpm@11.25.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
+COPY apps/customer-web/package.json apps/customer-web/package.json
+COPY apps/operations-web/package.json apps/operations-web/package.json
+
+FROM tools AS customer-build
+WORKDIR /workspace
+RUN pnpm --filter @tirodhan/customer-web install --frozen-lockfile
+COPY apps/customer-web apps/customer-web
+ENV NODE_ENV=production
+RUN pnpm --filter @tirodhan/customer-web run build && pnpm --filter @tirodhan/customer-web run test:production-isolation
+
+FROM tools AS operations-build
+WORKDIR /workspace
+RUN pnpm --filter @tirodhan/operations-web install --frozen-lockfile
+COPY apps/operations-web apps/operations-web
+ARG VITE_OPERATIONS_V2_DISPATCH=false
+ARG VITE_OPERATIONS_V2_FLEET=false
+ARG VITE_OPERATIONS_V2_ORCHESTRATION=false
+ENV NODE_ENV=production
+RUN pnpm --filter @tirodhan/operations-web run build && pnpm --filter @tirodhan/operations-web run test:production-isolation
+
+FROM node:24-bookworm-slim AS web-host
+WORKDIR /app
+COPY infra/web-host/server.mjs ./
+ENV NODE_ENV=production
+USER node
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD ["node","-e","fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exitCode=1}).catch(()=>{process.exitCode=1})"]
+ENTRYPOINT ["node","server.mjs"]
+
+FROM web-host AS customer-web
+COPY --from=customer-build /workspace/apps/customer-web/dist ./dist
+CMD ["customer"]
+
+FROM web-host AS operations-web
+COPY --from=operations-build /workspace/apps/operations-web/dist ./dist
+CMD ["operations"]

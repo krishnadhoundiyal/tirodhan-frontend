@@ -1,0 +1,107 @@
+name: Web container quality
+on:
+  pull_request:
+    paths:
+      - 'apps/customer-web/**'
+      - 'apps/operations-web/**'
+      - 'infra/web-host/**'
+      - 'infra/apim/web-session/**'
+      - 'Dockerfile.web'
+      - '.dockerignore'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
+      - 'docs/WEB_NONPROD_ACA_HANDOFF.md'
+      - 'docs/OPERATIONS_WEB_APIM_*.md'
+      - '.github/workflows/web-containers.yml'
+  push:
+    branches: ['codex/web-session-gateway-wiring']
+permissions:
+  contents: read
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.diff.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          both='["customer","operations"]'
+          range="$BASE..$HEAD_SHA"
+          if [ "$EVENT" = pull_request ]; then range="$BASE...$HEAD_SHA"; fi
+          if ! git cat-file -e "$BASE^{commit}" 2>/dev/null ||
+             ! changed=$(git diff --no-renames --name-only "$range"); then
+            echo "apps=$both" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          customer=false
+          operations=false
+          while IFS= read -r file; do
+            case "$file" in
+              apps/customer-web/*) customer=true ;;
+              apps/operations-web/*) operations=true ;;
+              infra/web-host/*|infra/apim/web-session/*|Dockerfile.web|.dockerignore|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|patches/*|.github/workflows/web-containers.yml)
+                customer=true
+                operations=true
+                ;;
+            esac
+          done <<< "$changed"
+          if $customer && $operations; then apps="$both"
+          elif $customer; then apps='["customer"]'
+          elif $operations; then apps='["operations"]'
+          else apps='[]'
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+  web:
+    needs: scope
+    if: needs.scope.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        product: ${{ fromJSON(needs.scope.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm --filter tirodhan-frontend --filter @tirodhan/${{ matrix.product }}-web install --frozen-lockfile
+      - run: pnpm --filter @tirodhan/${{ matrix.product }}-web run typecheck
+      - run: pnpm --filter @tirodhan/${{ matrix.product }}-web run lint
+      - run: pnpm --filter @tirodhan/${{ matrix.product }}-web run test
+      - run: pnpm exec prettier --check apps/${{ matrix.product }}-web
+      - run: docker build --file Dockerfile.web --target ${{ matrix.product }}-web --tag tirodhan-${{ matrix.product }}-web:ci .
+      - run: node infra/web-host/smoke.mjs ${{ matrix.product }} tirodhan-${{ matrix.product }}-web:ci
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: pnpm --filter tirodhan-frontend install --frozen-lockfile
+      - run: pnpm exec prettier --check infra/web-host infra/apim/web-session docs/WEB_NONPROD_ACA_HANDOFF.md docs/OPERATIONS_WEB_APIM_SESSION_CONTRACT.md .github/workflows/web-containers.yml
+      - run: node --test infra/apim/web-session/render.test.mjs
+      - run: node infra/apim/web-session/render.mjs
+      - run: python3 infra/apim/web-session/validate.py
+      - run: dotnet run --project infra/apim/web-session/tests/PolicyExpressions.csproj
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+          DOTNET_ADD_GLOBAL_TOOLS_TO_PATH: 'false'

@@ -9,5 +9,6 @@
     <Reference Include="Newtonsoft.Json"><HintPath>$(MSBuildSDKsPath)/../Newtonsoft.Json.dll</HintPath></Reference>
     <Compile Include="Program.cs"/>
     <Compile Include="../../../../.local/ow-p0-03/policy-harness/PolicyFunctions.cs"/>
+    <None Include="../configuration.nonprod.pending.json" Link="configuration.nonprod.pending.json" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

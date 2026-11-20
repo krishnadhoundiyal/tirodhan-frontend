@@ -1,0 +1,104 @@
+{
+  "business_operations": {
+    "auth-me": {
+      "method": "GET",
+      "path": "/auth/me"
+    },
+    "customer-address-list": {
+      "method": "GET",
+      "path": "/addresses"
+    },
+    "customer-address-create": {
+      "method": "POST",
+      "path": "/addresses"
+    },
+    "customer-address-update": {
+      "method": "PUT",
+      "path": "/addresses/{address_id}"
+    },
+    "customer-address-archive": {
+      "method": "POST",
+      "path": "/addresses/{address_id}/archive"
+    },
+    "customer-serviceability-create": {
+      "method": "POST",
+      "path": "/serviceability/contexts"
+    },
+    "customer-serviceability-read": {
+      "method": "GET",
+      "path": "/serviceability/contexts/{context_id}"
+    },
+    "customer-catalogue": {
+      "method": "GET",
+      "path": "/customer/collection-catalogue"
+    },
+    "customer-weight-pricing-policy": {
+      "method": "GET",
+      "path": "/customer/weight-pricing-policy"
+    },
+    "customer-collection-quote": {
+      "method": "POST",
+      "path": "/customer/collection-quotes"
+    },
+    "customer-category-recommendations": {
+      "method": "GET",
+      "path": "/customer/recommendations/collection-categories"
+    },
+    "customer-collection-list": {
+      "method": "GET",
+      "path": "/customer/collection-requests"
+    },
+    "customer-collection-detail": {
+      "method": "GET",
+      "path": "/customer/collection-requests/{request_id}"
+    },
+    "customer-collection-create": {
+      "method": "POST",
+      "path": "/collection-requests"
+    },
+    "customer-collection-cancel": {
+      "method": "POST",
+      "path": "/collection-requests/{request_id}/cancel"
+    },
+    "customer-payment-status": {
+      "method": "GET",
+      "path": "/customer/collection-requests/{request_id}/payment"
+    },
+    "customer-refund-status": {
+      "method": "GET",
+      "path": "/customer/collection-requests/{request_id}/refunds"
+    },
+    "manager-operating-region": {
+      "method": "GET",
+      "path": "/manager/business/operating_region"
+    },
+    "manager-booking-lineage": {
+      "method": "GET",
+      "path": "/manager/business/bookings/{request_id}/lineage"
+    },
+    "manager-booking-transfers": {
+      "method": "GET",
+      "path": "/manager/business/bookings/{request_id}/events/transfers"
+    },
+    "manager-rider-list": {
+      "method": "GET",
+      "path": "/manager/riders"
+    },
+    "manager-pending-groups": {
+      "method": "GET",
+      "path": "/manager/collection-groups/pending-assignment"
+    },
+    "manager-incident-list": {
+      "method": "GET",
+      "path": "/manager/incidents"
+    },
+    "manager-group-assign": {
+      "method": "POST",
+      "path": "/manager/collection-groups/{collection_group_id}/assign"
+    },
+    "manager-assignment-reassign": {
+      "method": "POST",
+      "path": "/manager/assignments/{predecessor_assignment_id}/reassign"
+    }
+  }
+}
