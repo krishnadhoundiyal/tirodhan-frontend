@@ -43,6 +43,8 @@ function harness(configuration: unknown = config, roles = ['MANAGER']) {
   let cookie = false;
   let refreshes = 0;
   let expired = false;
+  let loseVerify = false;
+  let rejectLogout = false;
   const lockNames = new Set<string>();
   const locks = {
     request: async <T>(
@@ -85,11 +87,16 @@ function harness(configuration: unknown = config, roles = ['MANAGER']) {
           return json({ challenge_reference: challenge }, 202);
         if (url.pathname.endsWith('/logout')) {
           expect(init?.body).toBe('{}');
+          if (rejectLogout) {
+            rejectLogout = false;
+            return json({}, 503);
+          }
           cookie = false;
           return json(null, 204);
         }
         if (url.pathname.endsWith('/verify')) {
           cookie = true;
+          if (loseVerify) throw new TypeError('Synthetic lost verify response');
           return json(grant('synthetic-initial'));
         }
         expect(init?.body).toBe('{}');
@@ -127,9 +134,77 @@ function harness(configuration: unknown = config, roles = ['MANAGER']) {
       locks,
       fetcher,
     );
-  return { create, fetcher, lockNames, refreshCount: () => refreshes };
+  return {
+    create,
+    fetcher,
+    lockNames,
+    refreshCount: () => refreshes,
+    hasCookie: () => cookie,
+    loseVerifyResponse: () => {
+      loseVerify = true;
+    },
+    rejectNextLogout: () => {
+      rejectLogout = true;
+    },
+  };
 }
 const phone = '+919999999999';
+
+test('starting another sign-in blocks OTP until the gateway confirms sign-out', async () => {
+  const fixture = harness();
+  const runtime = await fixture.create();
+  const view = render(createElement(App, { runtime }));
+  const commandIds = () =>
+    fixture.fetcher.mock.calls
+      .filter(([url]) => String(url) === gateway + '/web/start')
+      .map(([, init]) => JSON.parse(String(init?.body)).client_request_id);
+  const requestCode = () => {
+    fireEvent.change(screen.getByLabelText('Phone number'), {
+      target: { value: phone },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Request code' }));
+  };
+  try {
+    requestCode();
+    const code = await screen.findByLabelText('One-time code');
+    fireEvent.change(code, { target: { value: '123456' } });
+    fixture.loseVerifyResponse();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify code' }));
+    await screen.findByText(
+      'The web session could not be verified. Please try again.',
+    );
+    expect(fixture.hasCookie()).toBe(true);
+
+    fixture.rejectNextLogout();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start another sign-in' }),
+    );
+    await screen.findByText(/Gateway sign-out was not confirmed/);
+    expect(runtime.session.snapshot().logoutUnconfirmed).toBe(true);
+    expect(fixture.hasCookie()).toBe(true);
+    expect(screen.queryByLabelText('One-time code')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Request code' })).toBeNull();
+    expect(commandIds()).toHaveLength(1);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry gateway sign-out' }),
+    );
+    const input =
+      await screen.findByLabelText<HTMLInputElement>('Phone number');
+    expect(input.value).toBe('');
+    expect(fixture.hasCookie()).toBe(false);
+    requestCode();
+    expect(
+      await screen.findByLabelText<HTMLInputElement>('One-time code'),
+    ).toHaveProperty('value', '');
+    expect(commandIds()).toHaveLength(2);
+    expect(new Set(commandIds()).size).toBe(2);
+  } finally {
+    view.unmount();
+    await runtime.session.logout();
+    runtime.dispose();
+  }
+});
 async function signIn(runtime: Awaited<ReturnType<typeof releaseRuntime>>) {
   const reference = await runtime.session.startOtp({
     phone,
