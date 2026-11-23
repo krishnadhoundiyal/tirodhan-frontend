@@ -62,7 +62,8 @@ jobs:
               fi
               # Only a missing manifest permits a build. Auth and network
               # errors must surface rather than replace an unverified tag.
-              if ! grep -Eiq 'manifest unknown|name unknown|manifest for .* not found' "$pull_log"; then
+              if ! grep -Eiq 'manifest unknown|name unknown|manifest for .* not found' "$pull_log" &&
+                 ! grep -Fxq -- "Error response from daemon: failed to resolve reference \"$image:$tag\": $image:$tag: not found" "$pull_log"; then
                 cat "$pull_log"
                 exit 1
               fi
