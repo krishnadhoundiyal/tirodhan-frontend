@@ -1,0 +1,102 @@
+name: Publish NONPROD web images
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full SHA of the reviewed commit on main
+        required: true
+        type: string
+
+permissions: {}
+concurrency:
+  group: publish-nonprod-web
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && github.repository == 'krishnadhoundiyal/tirodhan-frontend'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      IMAGE_ROOT: ghcr.io/krishnadhoundiyal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select reviewed main source
+        shell: bash
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          if ! git rev-list --first-parent "$GITHUB_SHA" | grep -Fx "$SOURCE_COMMIT" >/dev/null; then
+            echo "::error::Source must be a commit on main's first-parent history."
+            exit 1
+          fi
+          git checkout --detach "$SOURCE_COMMIT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Sign in to GHCR
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Reuse or build and smoke-test both images
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/web-images"
+          for product in customer operations; do
+            image="$IMAGE_ROOT/tirodhan-$product-web"
+            ref="$image:sha-$SOURCE_COMMIT"
+            pull_log="$RUNNER_TEMP/web-images/$product.pull"
+            digest=""
+            for tag in "sha-$SOURCE_COMMIT" "$SOURCE_COMMIT"; do
+              if docker pull --platform linux/amd64 "$image:$tag" > "$pull_log" 2>&1; then
+                digest=$(sed -nE 's/^Digest: (sha256:[a-f0-9]{64})$/\1/p' "$pull_log")
+                [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+                ref="$image@$digest"
+                break
+              fi
+              # Only a missing manifest permits a build. Auth and network
+              # errors must surface rather than replace an unverified tag.
+              if ! grep -Eiq 'manifest unknown|name unknown|manifest for .* not found' "$pull_log"; then
+                cat "$pull_log"
+                exit 1
+              fi
+            done
+            if [[ -z "$digest" ]]; then
+              docker build --platform linux/amd64 --file Dockerfile.web --target "$product-web" \
+                --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+                --label "org.opencontainers.image.revision=$SOURCE_COMMIT" --tag "$ref" .
+            fi
+            [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref")" == "$SOURCE_COMMIT" ]]
+            [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$ref")" == linux/amd64 ]]
+            node infra/web-host/smoke.mjs "$product" "$ref"
+            printf '%s\n' "$ref" > "$RUNNER_TEMP/web-images/$product.ref"
+          done
+      - name: Publish missing images and record immutable references
+        shell: bash
+        run: |
+          {
+            printf '### NONPROD web release\n\nSource: `%s`\n\n' "$SOURCE_COMMIT"
+            printf 'Both container smoke suites passed. Set `WEB_AUTH_ENABLED=false` and use the runtime settings in the ACA handoff. Manager V2 build flags are left at their defaults.\n\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for product in customer operations; do
+            ref=$(cat "$RUNNER_TEMP/web-images/$product.ref")
+            if [[ "$ref" != *@sha256:* ]]; then
+              image="${ref%:*}"
+              smoke_id=$(docker image inspect --format '{{.Id}}' "$ref")
+              log="$RUNNER_TEMP/web-images/$product.push"
+              docker push "$ref" | tee "$log"
+              digest=$(sed -nE 's/^.*: digest: (sha256:[a-f0-9]{64}) size: [0-9]+$/\1/p' "$log")
+              [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+              ref="$image@$digest"
+              docker pull --platform linux/amd64 "$ref"
+              [[ "$(docker image inspect --format '{{.Id}}' "$ref")" == "$smoke_id" ]]
+            fi
+            printf -- '- %s: `%s`\n' "$product" "$ref" >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "$ref"
+          done

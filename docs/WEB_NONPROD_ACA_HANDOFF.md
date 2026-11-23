@@ -4,7 +4,9 @@ The two release targets serve static frontend builds. APIM owns browser session 
 
 ## Release artifacts
 
-Build from the frontend repository root using Node 24, the pinned pnpm 11.25.0 and the committed lockfile. Docker installs only the selected web workspace's dependency closure, builds in production mode and checks the output for fixture leakage. The final image runs the static server as the unprivileged `node` user and copies only its site's `dist`. There are no required build arguments or deploy-time rebuilds.
+Use the manual [Publish NONPROD web images](../.github/workflows/publish-nonprod-web.yml) workflow on `main` with the full reviewed source commit. The workflow reuses verified GHCR images when available, smoke-tests both targets before publishing, and writes the source commit and digest references to the run summary. Use those digests for ACA and keep the runtime settings below.
+
+For local validation, build from the frontend repository root using Node 24, the pinned pnpm 11.25.0 and the committed lockfile. Docker installs only the selected web workspace's dependency closure, builds in production mode and checks the output for fixture leakage. The final image runs the static server as the unprivileged `node` user and copies only its site's `dist`. There are no required build arguments or deploy-time rebuilds.
 
 ```sh
 docker build --platform linux/amd64 -f Dockerfile.web --target customer-web -t tirodhan-customer-web:local .
