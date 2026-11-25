@@ -61,7 +61,8 @@ for (const path of [
     .filter((p) => !p.startsWith('/assets/') && !p.startsWith('/fonts/'));
   for (const link of links)
     assert(
-      paths.includes(`dist${link === '/' ? '' : link}/index.html`),
+      paths.includes(`dist${link}`) ||
+        paths.includes(`dist${link === '/' ? '' : link}/index.html`),
       `Broken public link: ${link}`,
     );
 }

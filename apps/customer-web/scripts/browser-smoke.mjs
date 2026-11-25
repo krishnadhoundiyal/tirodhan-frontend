@@ -12,20 +12,30 @@ const root = resolve('dist');
 let server, dev;
 let origin;
 if (fixture) {
-  dev = spawn(
-    process.execPath,
-    ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5187'],
-    {
-      env: {
-        ...process.env,
-        NODE_ENV: 'development',
-        VITE_CUSTOMER_FIXTURE: 'true',
+  if (process.env.CUSTOMER_FIXTURE_PREVIEW === 'existing') {
+    origin = 'http://127.0.0.1:5185';
+  } else {
+    dev = spawn(
+      process.execPath,
+      [
+        'node_modules/vite/bin/vite.js',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '5187',
+      ],
+      {
+        env: {
+          ...process.env,
+          NODE_ENV: 'development',
+          VITE_CUSTOMER_FIXTURE: 'true',
+        },
+        stdio: 'ignore',
+        windowsHide: true,
       },
-      stdio: 'ignore',
-      windowsHide: true,
-    },
-  );
-  origin = 'http://127.0.0.1:5187';
+    );
+    origin = 'http://127.0.0.1:5187';
+  }
 } else {
   server = createServer(async (req, res) => {
     try {
@@ -177,7 +187,7 @@ try {
   const navigate = async (path) => {
     await call('Page.navigate', { url: origin + path });
     await until(
-      `location.pathname===${JSON.stringify(path)}&&document.readyState==='complete'&&document.querySelector('h1')`,
+      `location.pathname+location.search===${JSON.stringify(path)}&&document.readyState==='complete'&&document.querySelector('h1')`,
     );
     await evaluate('document.fonts.ready');
   };
@@ -324,11 +334,69 @@ try {
       ),
     );
   } else {
+    const captureWidths = async (screen, scroll = 'window.scrollTo(0,0)') => {
+      for (const width of [390, 1440]) {
+        await call('Emulation.setDeviceMetricsOverride', {
+          width,
+          height: width === 390 ? 844 : 1050,
+          deviceScaleFactor: 1,
+          mobile: false,
+        });
+        await evaluate(scroll);
+        await until('document.documentElement.scrollWidth <= innerWidth');
+        await screenshot(`${screen}-${width}`);
+      }
+    };
     await navigate('/account/addresses');
     await until("document.body.textContent.includes('DEVELOPMENT FIXTURE')");
+    await captureWidths(
+      'sign-in',
+      "document.querySelector('.auth-form').scrollIntoView({block:'center'})",
+    );
+    await evaluate(
+      "document.querySelector('.auth-form input[type=tel]').focus()",
+    );
+    await call('Input.insertText', { text: '9999999999' });
+    await button('Send verification code');
+    await until(
+      "document.body.textContent.includes('Verify your mobile number')",
+    );
+    await captureWidths(
+      'verify-code',
+      "document.querySelector('.auth-form').scrollIntoView({block:'center'})",
+    );
     await button('Enter development customer');
     await until("document.body.textContent.includes('Sample home')");
+    const scrollToPickup =
+      "document.querySelector('.location-panel').scrollIntoView({block:'start', behavior:'instant'})";
+    assert(
+      await evaluate(
+        "!document.querySelector('.location-panel details').open && !document.querySelector('.location-search')",
+      ),
+    );
+    await captureWidths('pickup-location', scrollToPickup);
+    await evaluate("document.querySelector('.location-panel summary').click()");
+    await captureWidths('pickup-location-coordinates', scrollToPickup);
+    await evaluate("document.querySelector('.location-panel summary').click()");
+    const openPickup = () =>
+      evaluate('document.querySelector(".customer-tabs .pickup-tab").click()');
+    const pickupAddressPanel = `Array.from(document.querySelectorAll('.product-panel'))
+      .find(panel => panel.querySelector('h3')?.textContent === 'Pickup address')`;
+    const pickupAddressText = `${pickupAddressPanel}?.querySelector('p')?.textContent`;
+    await openPickup();
+    await until(`${pickupAddressText} === 'No address selected.'`);
+    await button('Choose saved address');
+    await until("location.pathname === '/account/addresses'");
     await button('Select address');
+    await openPickup();
+    await until(
+      `${pickupAddressText} === 'Example house, Demonstration Lane — fictional address'`,
+    );
+    await evaluate(
+      `${pickupAddressPanel}.scrollIntoView({block:'center', behavior:'instant'})`,
+    );
+    await screenshot('pickup-saved-address');
+    await button('Choose saved address');
     await button('Check selected address');
     await until(
       "document.body.textContent.includes('This address is serviceable.')",
@@ -382,7 +450,25 @@ try {
     await until(
       'Boolean(document.querySelector(\'[aria-label="Select Used Flowers & Garlands"]\'))',
     );
-    for (const width of [390, 768, 1440]) {
+    assert.equal(
+      await evaluate(`(async () => {
+        const cards = [...document.querySelectorAll('.catalogue-card img')];
+        const quick = [...document.querySelectorAll('.quick-categories img')];
+        await Promise.all([...cards, ...quick].map(async (img) => {
+          img.loading = 'eager';
+          await img.decode();
+        }));
+        return [cards.length, new Set(cards.map(img => img.src)).size, quick.length].join('/');
+      })()`),
+      '16/16/9',
+      'All approved catalogue card and shortcut images load locally',
+    );
+    for (const [width, expectedRows] of [
+      [390, '2/2'],
+      [768, '2/2'],
+      [1280, '4'],
+      [1440, '4'],
+    ]) {
       await call('Emulation.setDeviceMetricsOverride', {
         width,
         height: 1050,
@@ -392,6 +478,19 @@ try {
       assert(
         await evaluate('document.documentElement.scrollWidth<=innerWidth'),
         `Catalogue overflow ${width}`,
+      );
+      const rows =
+        await evaluate(`Array.from(document.querySelectorAll('.catalogue-cards'), grid => {
+        const counts = new Map();
+        for (const card of grid.children) {
+          counts.set(card.offsetTop, (counts.get(card.offsetTop) ?? 0) + 1);
+        }
+        return Array.from(counts.values()).join('/');
+      })`);
+      assert.deepEqual(
+        rows,
+        Array(4).fill(expectedRows),
+        `Catalogue rows at ${width}px`,
       );
       await screenshot(`catalogue-${width}`);
     }
@@ -438,6 +537,10 @@ try {
     }
     await button('Reserve capacity and create booking');
     await until("document.body.textContent.includes('Payment pending')");
+    await captureWidths(
+      'checkout',
+      "[...document.querySelectorAll('h3')].find(h=>h.textContent==='Payment').parentElement.scrollIntoView({block:'start'})",
+    );
     await evaluate(
       "[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Provider callback without backend confirmation')).querySelector('input').click()",
     );
@@ -453,6 +556,10 @@ try {
     await button('Confirm payment in fixture backend');
     await button('Refresh payment status');
     await until("document.body.textContent.includes('Payment received')");
+    await captureWidths(
+      'tracking',
+      "document.querySelector('.journey-timeline').parentElement.scrollIntoView({block:'start'})",
+    );
     await button('Refresh pickup details');
     await until(
       "Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Cancel pickup'))",
@@ -476,12 +583,44 @@ try {
       );
       await screenshot(`financial-detail-${width}`);
     }
-    await clickLink('Activity');
+    await evaluate(
+      'document.querySelector(\'.customer-tabs a[href="/account/activity"]\').click()',
+    );
     await evaluate(
       "[...document.querySelectorAll('[role=tab]')].find(b=>b.textContent==='History').click()",
     );
     await until("document.body.textContent.includes('CANCELLED')");
     await screenshot('booking-history');
+    await evaluate(
+      'document.querySelector(\'.customer-tabs a[href="/account"]\').click()',
+    );
+    await until("document.body.textContent.includes('My Account')");
+    await captureWidths('account-overview');
+    await evaluate(
+      'document.querySelector(\'.customer-tabs a[href="/account/home"]\').click()',
+    );
+    await until(
+      "document.body.textContent.includes('Give sacred items a respectful onward journey')",
+    );
+    await until(
+      "document.querySelector('.collection-home img')?.naturalWidth > 0",
+    );
+    await captureWidths('customer-home');
+    await evaluate(
+      'document.querySelector(\'.customer-tabs a[href="/account"]\').click()',
+    );
+    await clickLink('Payment methods');
+    await until(
+      "document.querySelectorAll('.payment-method-options li').length === 3",
+    );
+    await captureWidths(
+      'payment-methods',
+      "document.querySelector('.payment-methods-panel').scrollIntoView({block:'start', behavior:'instant'})",
+    );
+    await evaluate(
+      'document.querySelector(\'.payment-checkout-callout a[href="/account/bookings"]\').click()',
+    );
+    await until("location.pathname === '/account/bookings'");
     // Exercise actual structured cloning of a nonextractable CryptoKey into IndexedDB.
     assert(
       await evaluate(
@@ -511,6 +650,13 @@ try {
     );
     await button('Log out');
     await until("!document.body.textContent.includes('Sample home')");
+    await navigate('/account/catalogue?catalogue=empty');
+    await until("document.body.textContent.includes('DEVELOPMENT FIXTURE')");
+    await button('Enter development customer');
+    await until(
+      "document.body.textContent.includes('No collection items available yet')",
+    );
+    await captureWidths('empty-catalogue');
     assert.equal(protectedNetwork.length, 0);
   }
   // An optional favicon 404 is harmless; application runtime errors are not.

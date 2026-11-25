@@ -173,16 +173,8 @@ select {
   color: #b7c7b9;
 }
 .brand-symbol {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 46px;
-  border: 1px solid #be9d59;
-  color: #dfbe7a;
-  border-radius: 20px 20px 5px 5px;
-  font:
-    32px Georgia,
-    serif;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
 }
 .workspace-label {
@@ -623,9 +615,6 @@ time {
   margin-top: 5px;
   text-transform: uppercase;
   letter-spacing: 3px;
-}
-.admission-brand .brand-symbol {
-  background: #163b32;
 }
 .admission-card {
   padding: 40px;

@@ -19,7 +19,7 @@ export const pages = {
   '/availability': {
     title: 'Service availability',
     description:
-      'Learn how address-specific availability is checked. Online booking is not yet activated on Customer Web.',
+      'Check collection availability for your address through your Tirodhan customer account.',
   },
   '/help': {
     title: 'Help and questions',
@@ -48,6 +48,7 @@ export const pages = {
 } as const;
 export const publicPaths = Object.keys(pages);
 export const accountPaths = [
+  '/account/home',
   '/account/catalogue',
   '/account/review',
   '/account/pickup',
@@ -82,15 +83,13 @@ export function metadata(path: string) {
 }
 export function Lotus({ className = '' }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 100 80"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path d="M50 65C25 56 23 32 50 9c27 23 25 47 0 56Z" />
-      <path d="M50 65C23 70 10 50 9 31c24 0 40 12 41 34ZM50 65c27 5 40-15 41-34-24 0-40 12-41 34ZM20 70h60" />
-    </svg>
+    <img
+      className={`lotus ${className}`.trim()}
+      src="/tirodhan-lotus.svg"
+      width={44}
+      height={44}
+      alt=""
+    />
   );
 }
 export function Header({ path }: { path: string }) {
@@ -156,8 +155,6 @@ export function Footer() {
       </nav>
       <p className="footer-bottom">
         Respectful collection. Appropriate authorized handover.
-        <br />
-        Online booking is not yet activated on Customer Web.
       </p>
     </footer>
   );
@@ -389,9 +386,8 @@ function Home() {
           that have meant so much.
         </h2>
         <p>
-          Begin by understanding the journey. Online booking is not yet
-          activated. Secure sign-in, address checks and collection options are
-          not available here yet.
+          Start with an address check to see the collection options for your
+          home.
         </p>
         <a className="button" href="/availability">
           View service availability <span aria-hidden="true">→</span>
@@ -403,7 +399,7 @@ function Home() {
 const faq = [
   [
     'Can I book a collection on this website?',
-    'Online booking is not yet activated on Customer Web. You can explore the collection journey and understand how address-specific availability will be checked.',
+    'Open your customer account to check an address. You can review available collection options there after signing in.',
   ],
   [
     'Is collection available everywhere?',
@@ -423,7 +419,7 @@ const faq = [
   ],
   [
     'Can I see previous bookings here?',
-    'Booking history is not yet available on Customer Web. No booking history can be viewed here yet.',
+    'Sign in to your customer account and open Activity to see your collection requests and their status.',
   ],
 ];
 function Intro({
@@ -495,9 +491,8 @@ export function PublicPage({ path }: { path: string }) {
         <div className="notice">
           <h2>Eligibility comes before confirmation.</h2>
           <p>
-            The operational catalogue must come from the backend.
-            Region-specific item eligibility, handling and collection options
-            are not yet available on this website.
+            Check your address to see the collection catalogue and options
+            available in your area.
           </p>
           <a href="/availability" className="text-link">
             Explore availability →
@@ -517,7 +512,13 @@ export function PublicPage({ path }: { path: string }) {
             customer session and a current address snapshot.
           </p>
         </Intro>
-        <Gate />
+        <section className="notice">
+          <h2>Check your address</h2>
+          <p>Sign in to select or add the address for your collection.</p>
+          <a className="button" href="/account/serviceability">
+            Sign in to check availability
+          </a>
+        </section>
         <section className="section compact">
           <h2>What an availability check means</h2>
           <p>

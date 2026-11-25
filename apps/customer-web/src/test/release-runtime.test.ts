@@ -29,7 +29,11 @@ const json = (body: unknown, status = 200) =>
     json: async () => body,
     text: async () => JSON.stringify(body),
   }) as Response;
-function harness(configuration: unknown = config, roles = ['CUSTOMER']) {
+function harness(
+  configuration: unknown = config,
+  roles = ['CUSTOMER'],
+  features: unknown = null,
+) {
   let cookie = false;
   let refreshes = 0;
   let expired = false;
@@ -57,6 +61,9 @@ function harness(configuration: unknown = config, roles = ['CUSTOMER']) {
       const headers = new Headers(init?.headers);
       expect(headers.has('x-gateway-secret')).toBe(false);
       if (url.origin === browser) {
+        if (url.pathname === '/web-customer-features.json')
+          return json(features);
+        if (url.pathname === '/web-checkout-config.json') return json(null);
         expect(url.pathname).toBe('/web-session-config.json');
         expect(init).toMatchObject({
           credentials: 'omit',
@@ -94,6 +101,22 @@ function harness(configuration: unknown = config, roles = ['CUSTOMER']) {
         expect(headers.get('authorization')).toMatch(/^Bearer synthetic-/);
         return json({ user_id: owner, roles });
       }
+      if (url.pathname === '/v1/customer/me/profile')
+        return json({
+          user_id: owner,
+          display_name: null,
+          email: null,
+          phone_display: '+91••••••1234',
+          version: 1,
+        });
+      if (url.pathname === '/v1/customer/me/preferences')
+        return json({
+          language: 'en-IN',
+          collection_notifications: true,
+          version: 1,
+        });
+      if (url.pathname === '/v1/customer/payment-methods')
+        return json({ methods: [] });
       expect(url.pathname + url.search).toBe(protectedPath);
       if (expired)
         expect(headers.get('authorization')).toBe('Bearer synthetic-refreshed');
@@ -123,6 +146,46 @@ async function signIn(runtime: Awaited<ReturnType<typeof releaseRuntime>>) {
   const reference = await runtime.session.startOtp(phone);
   return runtime.session.login(reference, '123456');
 }
+
+test.each([true, false])(
+  'account features request their FastAPI routes only when enabled: %s',
+  async (enabled) => {
+    const fixture = harness(config, ['CUSTOMER'], {
+      profile: enabled,
+      preferences: enabled,
+      paymentMethods: enabled,
+    });
+    const runtime = await fixture.create();
+    await signIn(runtime);
+    const repository = runtime.customer().repo;
+    fixture.fetcher.mockClear();
+    const outcomes = await Promise.allSettled(
+      [
+        repository.profile,
+        repository.preferences,
+        repository.paymentMethods,
+      ].map(async (read) => read()),
+    );
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(
+      Array(3).fill(enabled ? 'fulfilled' : 'rejected'),
+    );
+    expect(
+      fixture.fetcher.mock.calls.map(([url, init]) => [
+        String(url),
+        init?.method,
+      ]),
+    ).toEqual(
+      enabled
+        ? [
+            [gateway + '/v1/customer/me/profile', 'GET'],
+            [gateway + '/v1/customer/me/preferences', 'GET'],
+            [gateway + '/v1/customer/payment-methods', 'GET'],
+          ]
+        : [],
+    );
+    await runtime.session.logout();
+  },
+);
 test('release composition signs in, refreshes a protected request, restores after reload, and logs out', async () => {
   const fixture = harness();
   const runtime = await fixture.create();

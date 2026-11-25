@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
@@ -28,6 +29,14 @@ const types = {
   '.txt': 'text/plain; charset=utf-8',
 };
 const env = process.env;
+const originSecret = env.WEB_APIM_ORIGIN_SECRET;
+const originRequired =
+  env.WEB_APIM_ORIGIN_REQUIRED === 'true' || !!originSecret;
+const validOriginSecret = (value) =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+if (originRequired && !validOriginSecret(originSecret))
+  throw new Error('APIM origin authentication is not configured');
+const originKey = originRequired ? Buffer.from(originSecret, 'hex') : null;
 // Only these public deployment inputs are serialized. Never pass the process
 // environment, a secret value, or request headers to browser JavaScript.
 const session =
@@ -49,6 +58,25 @@ const session =
           header: env.WEB_AUTH_CSRF_HEADER,
           value: env.WEB_AUTH_CSRF_VALUE,
         },
+      }
+    : null;
+const checkoutReference = env.WEB_CHECKOUT_POC_REFERENCE;
+const customerFeatures = {
+  profile: !!session && env.WEB_CUSTOMER_PROFILE_ENABLED === 'true',
+  preferences: !!session && env.WEB_CUSTOMER_PREFERENCES_ENABLED === 'true',
+  paymentMethods:
+    !!session && env.WEB_CUSTOMER_PAYMENT_METHODS_ENABLED === 'true',
+};
+const checkout =
+  product === 'customer' &&
+  session &&
+  checkoutReference &&
+  /^[A-Za-z0-9][A-Za-z0-9:/._#-]{0,250}$/.test(checkoutReference)
+    ? {
+        approved: true,
+        approvalReference: checkoutReference,
+        environment: session.environment,
+        browserOrigin: session.browserOrigin,
       }
     : null;
 const index = product === 'customer' ? 'account/index.html' : 'index.html';
@@ -85,6 +113,29 @@ const server = createServer(async (req, res) => {
     return send(400, types['.txt'], 'Bad request');
   }
   if (path === '/health') return send(200, types['.txt'], 'ok');
+  if (originKey) {
+    const supplied = req.headers['x-tirodhan-web-origin'];
+    if (
+      !validOriginSecret(supplied) ||
+      !timingSafeEqual(originKey, Buffer.from(supplied, 'hex'))
+    )
+      return send(403, types['.txt'], 'Forbidden');
+  }
+  if (path === '/web-customer-features.json' && product === 'customer')
+    return send(
+      200,
+      'application/json; charset=utf-8',
+      JSON.stringify(customerFeatures),
+    );
+  if (path === '/web-checkout-config.json' && product === 'customer')
+    return send(
+      200,
+      'application/json; charset=utf-8',
+      JSON.stringify(checkout),
+      {
+        'X-Robots-Tag': 'noindex, nofollow',
+      },
+    );
   if (path === '/web-session-config.json')
     return send(
       200,

@@ -13,6 +13,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type { Runtime } from '../runtime';
+import { accountGroups, followAccountLink } from './account-navigation';
 import type { CustomerExperience } from './customer-model';
 import { ApiError, userMessage, isExpiredCursor } from '../parity/api/errors';
 import { declarationItem } from '../parity/features/collection/declarations';
@@ -80,9 +81,11 @@ function ErrorView({ error, retry }: { error: unknown; retry?: () => void }) {
 export function ProductMedia({
   media,
   model,
+  decorative = false,
 }: {
   media: (Omit<MediaDto, 'url'> & { url: string | null }) | null;
   model: CustomerExperience;
+  decorative?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
   let source: string | null = null;
@@ -111,7 +114,7 @@ export function ProductMedia({
     <img
       className="product-image"
       src={source}
-      alt={media?.alt_text ?? 'Collection illustration'}
+      alt={decorative ? '' : (media?.alt_text ?? 'Collection illustration')}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(source)}
@@ -119,8 +122,13 @@ export function ProductMedia({
   ) : (
     <div
       className="product-image media-fallback"
-      role="img"
-      aria-label={media?.alt_text ?? 'Collection illustration unavailable'}
+      role={decorative ? undefined : 'img'}
+      aria-hidden={decorative || undefined}
+      aria-label={
+        decorative
+          ? undefined
+          : (media?.alt_text ?? 'Collection illustration unavailable')
+      }
     >
       ✧
     </div>
@@ -191,6 +199,8 @@ export function ProductArea({
   let content: ReactNode;
   if (path === '/account')
     content = <Overview model={model} navigate={navigate} />;
+  else if (path === '/account/home')
+    content = <CollectionHome model={model} navigate={navigate} />;
   else if (path === '/account/catalogue')
     content = <CatalogueView model={model} navigate={navigate} />;
   else if (path === '/account/review' || path === '/account/pickup')
@@ -221,7 +231,13 @@ export function ProductArea({
       />
     );
   else if (path === '/account/payment-methods')
-    content = <PaymentMethods model={model} />;
+    content = (
+      <PaymentMethods
+        model={model}
+        navigate={navigate}
+        preview={Boolean(runtime.development)}
+      />
+    );
   else if (path === '/account/notifications')
     content = <Notifications model={model} navigate={navigate} />;
   else if (/^\/account\/information\/(help|about|privacy|terms)$/.test(path))
@@ -240,6 +256,40 @@ export function ProductArea({
     </ProductBoundary>
   );
 }
+function CollectionHome({
+  model,
+  navigate,
+}: {
+  model: CustomerExperience;
+  navigate: (p: string) => void;
+}) {
+  return (
+    <>
+      <section className="collection-home">
+        <div>
+          <p className="eyebrow">SACRED COLLECTION</p>
+          <h2>Give sacred items a respectful onward journey</h2>
+          <p>Choose your items and book a pickup from your home.</p>
+          <a
+            href="/account/pickup"
+            className="button"
+            onClick={(event) => followAccountLink(event, navigate)}
+          >
+            Book Pickup
+          </a>
+        </div>
+        <img
+          src="/sacred-pickup-preparation.webp"
+          width={960}
+          height={640}
+          alt="Hands gently covering flower garlands and a brass diya with a cotton cloth."
+        />
+      </section>
+      <h2 className="subheading">Your current journey</h2>
+      <Bookings model={model} navigate={navigate} compact />
+    </>
+  );
+}
 function Overview({
   model,
   navigate,
@@ -250,11 +300,11 @@ function Overview({
   const profile = useQuery({
     queryKey: ['customer', model.owner, model.epoch, 'profile'],
     queryFn: ({ signal }) => model.repo.profile(signal),
+    enabled: model.capabilities.has('profile'),
   });
   return (
     <>
       <section className="notice">
-        <p className="eyebrow">YOUR COLLECTION JOURNEY</p>
         <h2>
           {profile.isSuccess
             ? (profile.data.display_name ?? 'Your Tirodhan account')
@@ -268,32 +318,20 @@ function Overview({
           Begin a collection →
         </button>
       </section>
-      <div className="account-link-grid">
-        {[
-          ['profile', 'Edit profile'],
-          ['addresses', 'Saved addresses'],
-          ['payment-methods', 'Payment methods'],
-          ['favourites', 'Favourite collection items'],
-          ['bookings', 'Bookings'],
-          ['activity', 'Activity & history'],
-          ['preferences', 'Language & service updates'],
-          ['notifications', 'Notifications'],
-          ['feedback', 'Share feedback'],
-          ['information/help', 'Help & Support'],
-          ['information/about', 'About Tirodhan'],
-          ['information/terms', 'Service terms'],
-          ['information/privacy', 'Privacy policy'],
-        ].map(([path, label]) => (
-          <a
-            href={`/account/${path}`}
-            key={path}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate(`/account/${path}`);
-            }}
-          >
-            {label} →
-          </a>
+      <div className="account-groups">
+        {accountGroups.map(({ title, links }) => (
+          <section className="product-panel account-group" key={title}>
+            <h3>{title}</h3>
+            {links.map(([path, label]) => (
+              <a
+                href={`/account/${path}`}
+                key={path}
+                onClick={(event) => followAccountLink(event, navigate)}
+              >
+                {label} →
+              </a>
+            ))}
+          </section>
         ))}
       </div>
       <h2 className="subheading">Your current journey</h2>
@@ -339,6 +377,16 @@ function CatalogueView({
           ).values(),
         ]
       : [];
+  const groups =
+    q.data?.groups
+      .filter(
+        (group) =>
+          group.active &&
+          q.data.categories.some(
+            (item) => item.active && item.group === group.code,
+          ),
+      )
+      .sort((a, b) => a.order - b.order) ?? [];
   return (
     <>
       <div className="panel-heading">
@@ -357,6 +405,13 @@ function CatalogueView({
         <p role="status">Loading collection items…</p>
       ) : q.isError ? (
         <ErrorView error={q.error} retry={() => void q.refetch()} />
+      ) : groups.length === 0 ? (
+        <section className="product-panel catalogue-empty">
+          <h3>No collection items available yet</h3>
+          <p>
+            There are no published items to book right now. Check back later.
+          </p>
+        </section>
       ) : (
         <>
           {q.data.quick.length > 0 && (
@@ -364,21 +419,27 @@ function CatalogueView({
               className="quick-categories"
               aria-label="Quick collection categories"
             >
-              {q.data.quick
-                .filter((c) =>
-                  q.data.categories.some(
-                    (item) => item.code === c.categoryCode && item.active,
-                  ),
-                )
-                .map((c) => (
-                  <button
-                    key={c.categoryCode}
-                    aria-pressed={draft.codes.includes(c.categoryCode)}
-                    onClick={() => toggle(c.categoryCode)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
+              {q.data.quick.flatMap((c) => {
+                const item = q.data.categories.find(
+                  (item) => item.code === c.categoryCode && item.active,
+                );
+                return item
+                  ? [
+                      <button
+                        key={c.categoryCode}
+                        aria-pressed={draft.codes.includes(c.categoryCode)}
+                        onClick={() => toggle(c.categoryCode)}
+                      >
+                        <ProductMedia
+                          model={model}
+                          media={item.thumbnail ?? item.image}
+                          decorative
+                        />
+                        {c.label}
+                      </button>,
+                    ]
+                  : [];
+              })}
             </div>
           )}
           {recommendations.length > 0 && (
@@ -399,56 +460,55 @@ function CatalogueView({
               </div>
             </section>
           )}
-          {q.data.groups
-            .filter((g) => g.active)
-            .sort((a, b) => a.order - b.order)
-            .map((g) => (
-              <section className="catalogue-group" key={g.code}>
-                <h3>{g.name}</h3>
-                <div className="catalogue-cards">
-                  {q.data.categories
-                    .filter((c) => c.active && c.group === g.code)
-                    .sort((a, b) => a.order - b.order)
-                    .map((c) => (
-                      <button
-                        className="catalogue-card"
-                        key={c.code}
-                        role="checkbox"
-                        aria-checked={draft.codes.includes(c.code)}
-                        aria-label={`Select ${c.name}`}
-                        onClick={() => toggle(c.code)}
-                      >
-                        <ProductMedia model={model} media={c.image} />
-                        <strong>{c.name}</strong>
-                        <span>{c.description}</span>
-                        {c.handlingHints && <small>{c.handlingHints}</small>}
-                        <span>
-                          {draft.codes.includes(c.code)
-                            ? '✓ Selected'
-                            : '+ Select'}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              </section>
-            ))}
+          {groups.map((g) => (
+            <section className="catalogue-group" key={g.code}>
+              <h3>{g.name}</h3>
+              <div className="catalogue-cards">
+                {q.data.categories
+                  .filter((c) => c.active && c.group === g.code)
+                  .sort((a, b) => a.order - b.order)
+                  .map((c) => (
+                    <button
+                      className="catalogue-card"
+                      key={c.code}
+                      role="checkbox"
+                      aria-checked={draft.codes.includes(c.code)}
+                      aria-label={`Select ${c.name}`}
+                      onClick={() => toggle(c.code)}
+                    >
+                      <ProductMedia model={model} media={c.image} decorative />
+                      <strong>{c.name}</strong>
+                      <span>{c.description}</span>
+                      {c.handlingHints && <small>{c.handlingHints}</small>}
+                      <span>
+                        {draft.codes.includes(c.code)
+                          ? '✓ Selected'
+                          : '+ Select'}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </section>
+          ))}
         </>
       )}
-      {error !== undefined && (
+      {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
-      <div className="review-bar">
-        <span>{draft.codes.length} categories selected</span>
-        <button
-          className="button"
-          onClick={() => navigate('/account/review')}
-          disabled={!draft.codes.length}
-        >
-          Review your collection →
-        </button>
-      </div>
+      {groups.length > 0 && !q.isError && (
+        <div className="review-bar">
+          <span>{draft.codes.length} categories selected</span>
+          <button
+            className="button"
+            onClick={() => navigate('/account/review')}
+            disabled={!draft.codes.length}
+          >
+            Review your collection →
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -745,6 +805,27 @@ function BookingWizard({
       </div>
       {error !== undefined && <ErrorView error={error} />}
       <section className="product-panel">
+        <h3>Items and declarations</h3>
+        {policy.isPending && <p role="status">Loading current weight bands…</p>}
+        {policy.isError && (
+          <ErrorView error={policy.error} retry={() => void policy.refetch()} />
+        )}
+        <fieldset disabled={locked || busy}>
+          {policy.data &&
+            selected.map((category) => (
+              <ItemDeclarationForm
+                model={model}
+                category={category}
+                policy={policy.data}
+                key={category.code}
+              />
+            ))}
+        </fieldset>
+        {!selected.length && (
+          <p>Select at least one active collection category.</p>
+        )}
+      </section>
+      <section className="product-panel">
         <h3>Pickup address</h3>
         <p>{draft.address?.address ?? 'No address selected.'}</p>
         <button
@@ -805,28 +886,7 @@ function BookingWizard({
         />
       )}
       <section className="product-panel">
-        <h3>Items and declarations</h3>
-        {policy.isPending && <p role="status">Loading current weight bands…</p>}
-        {policy.isError && (
-          <ErrorView error={policy.error} retry={() => void policy.refetch()} />
-        )}
-        <fieldset disabled={locked || busy}>
-          {policy.data &&
-            selected.map((category) => (
-              <ItemDeclarationForm
-                model={model}
-                category={category}
-                policy={policy.data}
-                key={category.code}
-              />
-            ))}
-        </fieldset>
-        {!selected.length && (
-          <p>Select at least one active collection category.</p>
-        )}
-      </section>
-      <section className="product-panel">
-        <h3>Backend quotation</h3>
+        <h3>Collection summary</h3>
         {quote.isFetching && input && (
           <p role="status">Getting the current collection price…</p>
         )}
@@ -885,7 +945,7 @@ function BookingWizard({
         )}
       </section>
       <section className="product-panel">
-        <h3>Projected collection options</h3>
+        <h3>Pickup slot</h3>
         <p>
           Options are backend projections, not a certified route, assigned rider
           or guaranteed collection time.
@@ -1376,10 +1436,7 @@ function DetailContent({
               </button>
             )}
             {!model.options.checkout?.available() && (
-              <p>
-                Provider checkout is implemented but awaits approved web
-                checkout activation.
-              </p>
+              <p>Online checkout is currently unavailable.</p>
             )}
           </>
         )}
@@ -1788,32 +1845,74 @@ function AccountForm({
     </form>
   );
 }
-function PaymentMethods({ model }: { model: CustomerExperience }) {
+function PaymentMethods({
+  model,
+  navigate,
+  preview,
+}: {
+  model: CustomerExperience;
+  navigate: (path: string) => void;
+  preview: boolean;
+}) {
   const q = useQuery({
     queryKey: ['customer', model.owner, model.epoch, 'paymentMethods'],
     queryFn: ({ signal }) => model.repo.paymentMethods(signal),
   });
   return (
-    <section className="product-panel">
+    <section className="product-panel payment-methods-panel">
       <h2>Payment methods</h2>
-      <p>
-        Options are confirmed in secure checkout. Tirodhan does not store card
-        credentials.
-      </p>
+      <div className="payment-checkout-callout">
+        <div>
+          <h3>Pay for a booking</h3>
+          <p>
+            {preview
+              ? 'This preview simulates checkout. When enabled, eligible bookings open Razorpay Checkout.'
+              : model.options.checkout?.available()
+                ? 'Open an eligible booking and choose Continue to secure payment to open Razorpay Checkout.'
+                : 'Online checkout is currently unavailable. View your bookings to check payment status.'}
+          </p>
+        </div>
+        <a
+          className="button small"
+          href="/account/bookings"
+          onClick={(event) => followAccountLink(event, navigate)}
+        >
+          View bookings
+        </a>
+      </div>
       {q.isError ? (
         <ErrorView error={q.error} retry={() => void q.refetch()} />
       ) : q.isPending ? (
         <p role="status">Loading methods…</p>
       ) : q.data.methods.length ? (
-        q.data.methods.map((m) => (
-          <div key={m.code}>
-            <h3>{m.label}</h3>
-            <p>{m.description}</p>
-          </div>
-        ))
+        <>
+          <h3>{preview ? 'Example checkout options' : 'Checkout options'}</h3>
+          <ul className="payment-method-options">
+            {q.data.methods.map((method) => (
+              <li key={method.code}>
+                <span
+                  className="payment-method-icon"
+                  data-method={method.code}
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>{method.label}</strong>
+                  {method.description && <p>{method.description}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
-        <p>No payment methods are available.</p>
+        <p className="notice">
+          Payment options appear in checkout when a booking is ready for
+          payment.
+        </p>
       )}
+      <p className="payment-methods-note">
+        You choose your payment method in checkout. Tirodhan does not store your
+        card details.
+      </p>
     </section>
   );
 }

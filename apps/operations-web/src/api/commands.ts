@@ -97,6 +97,51 @@ const failure = (
   target: string,
 ) => make('/v2/manager/rider-failures', body, title, target, resource, true);
 export const commands = {
+  createRiderProfile(
+    rider: string,
+    vehicleType: string,
+    capacityClass: string,
+    identity: string = crypto.randomUUID(),
+  ) {
+    const optionalCode = (value: string) => {
+      if (!value) return null;
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(value)) throw new ContractError();
+      return value;
+    };
+    return make(
+      '/v1/manager/business/commands',
+      {
+        operation: 'RIDER_PROFILE',
+        client_command_id: uuid(identity),
+        resource_id: uuid(rider),
+        expected_version: 0,
+        reason: 'RIDER_ONBOARDING',
+        status: 'ACTIVE',
+        vehicle_type_code: optionalCode(vehicleType),
+        capacity_class_code: optionalCode(capacityClass),
+      },
+      'Create rider profile',
+      rider,
+      resource,
+    );
+  },
+  grantRiderAccess(rider: string, identity: string) {
+    return make(
+      '/v1/manager/business/commands',
+      {
+        operation: 'RIDER_ROLE',
+        client_command_id: uuid(identity),
+        resource_id: uuid(identity),
+        expected_version: 0,
+        reason: 'RIDER_ONBOARDING',
+        rider_id: uuid(rider),
+        active: true,
+      },
+      'Grant rider access',
+      rider,
+      resource,
+    );
+  },
   assign(group: string, rider: string) {
     return make(
       `/v1/manager/collection-groups/${uuid(group)}/assign`,

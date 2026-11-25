@@ -1,11 +1,20 @@
 import { QueryClient } from '@tanstack/react-query';
 import { CustomerSession, unavailableAdapter } from './auth/session';
 import { createApimWebSessionAdapter } from './auth/apim-adapter';
-import { readSessionConfiguration } from './auth/release-config';
+import {
+  readCheckoutConfiguration,
+  readCustomerFeatures,
+  readSessionConfiguration,
+} from './auth/release-config';
+import {
+  razorpayCheckout,
+  type RazorpayConstructor,
+} from './platform/checkout';
 import { CustomerApi } from './api/customer';
 import type { ReactNode } from 'react';
 import {
   CustomerExperience,
+  verifiedCapabilities,
   type ExperienceOptions,
 } from './features/customer-model';
 export interface DevelopmentTools {
@@ -97,11 +106,29 @@ export async function releaseRuntime(
     locks,
     fetcher,
   });
+  const [checkout, features] = adapter.available
+    ? await Promise.all([
+        readCheckoutConfiguration(browserOrigin, fetcher),
+        readCustomerFeatures(browserOrigin, fetcher),
+      ])
+    : [null, []];
   return createRuntime(
     new CustomerSession(
       adapter,
       adapter.available ? config!.gatewayOrigin : null,
       fetcher,
     ),
+    {
+      capabilities: new Set([...verifiedCapabilities, ...features]),
+      checkout: checkout
+        ? razorpayCheckout(checkout, {
+            origin: browserOrigin,
+            secure: window.isSecureContext,
+            document,
+            constructor: () =>
+              (window as Window & { Razorpay?: RazorpayConstructor }).Razorpay,
+          })
+        : null,
+    },
   );
 }

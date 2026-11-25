@@ -24,6 +24,43 @@ const button = (name: string) =>
   fireEvent.click(screen.getByRole('button', { name }));
 const link = (name: string) =>
   fireEvent.click(screen.getByRole('link', { name }));
+
+test('empty published catalogue explains availability and offers no booking action', async () => {
+  history.replaceState(null, '', '/account/catalogue?catalogue=empty');
+  const runtime = fixtureRuntime();
+  render(<CustomerApp runtime={runtime} />);
+  button('Enter development customer');
+  await screen.findByRole('heading', {
+    name: 'No collection items available yet',
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Review your collection →' }),
+  ).toBeNull();
+});
+test('an empty FastAPI payment methods list directs customers to their bookings', async () => {
+  history.replaceState(null, '', '/account/payment-methods');
+  const h = harness();
+  await h.login();
+  h.fetcher.mockImplementation(async (input) =>
+    String(input).endsWith('/v1/customer/payment-methods')
+      ? response({ methods: [] })
+      : response([]),
+  );
+  render(
+    <CustomerApp
+      runtime={createRuntime(h.session, {
+        capabilities: new Set(['paymentMethods']),
+      })}
+    />,
+  );
+  await screen.findByText(
+    'Payment options appear in checkout when a booking is ready for payment.',
+  );
+  expect(screen.queryByText('UPI')).toBeNull();
+  expect(
+    screen.getByRole('link', { name: 'View bookings' }).getAttribute('href'),
+  ).toBe('/account/bookings');
+});
 async function journey() {
   history.replaceState(null, '', '/account/addresses');
   const r = fixtureRuntime();
@@ -221,7 +258,10 @@ test('profile, preferences, favourites, payment methods, feedback, content and h
   button('Save favourites');
   await screen.findByText('Account information saved.');
   link('Payment methods');
-  await screen.findByText(/Secure provider checkout/);
+  await screen.findByRole('heading', { name: 'Example checkout options' });
+  for (const method of ['UPI', 'Credit or debit card', 'Net banking']) {
+    expect(screen.getByText(method)).toBeTruthy();
+  }
   link('Share feedback');
   fireEvent.change(await screen.findByLabelText('Feedback message'), {
     target: { value: 'Useful fixture message' },

@@ -164,7 +164,13 @@ export function fixtureRuntime() {
   const runtime = createRuntime(session, {
     memoryRecovery: true,
     checkout: product.sdk,
-    mediaResolver: () => '/collection-placeholder.svg',
+    mediaResolver: ({ url }) => {
+      const { origin, pathname } = new URL(url);
+      return origin === 'https://customer-fixture.invalid' &&
+        /^\/catalogue-artwork\/[a-z-]+\.webp$/.test(pathname)
+        ? pathname
+        : null;
+    },
     capabilities: new Set([
       'principal',
       'catalogue',

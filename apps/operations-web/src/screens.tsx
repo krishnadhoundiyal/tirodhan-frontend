@@ -7,6 +7,7 @@ import {
   CandidateActions,
   RecoveryInterventions,
   LineageReassignment,
+  RiderProvisioning,
 } from './command-ui';
 import {
   Gap,
@@ -140,6 +141,9 @@ export function Riders({
       <ReadPanel runtime={runtime} title="Riders" spec={reads.riders()}>
         {(rows) => (
           <>
+            {runtime.kind === 'verified-adapter' && (
+              <RiderProvisioning runtime={runtime} riders={rows} />
+            )}
             <label className="filter">
               Work state in loaded slice
               <select

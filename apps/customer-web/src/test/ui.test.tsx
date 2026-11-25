@@ -46,9 +46,13 @@ test.each(publicPaths)(
     expect(metadata(path).description.length).toBeGreaterThan(40);
   },
 );
-test('public links go to informative availability gate, with no fake booking action', () => {
+test('public availability links to the real authenticated address check', () => {
   render(<PublicPage path="/availability" />);
-  expect(screen.getByText('Online booking is not yet activated.')).toBeTruthy();
+  expect(
+    screen
+      .getByRole('link', { name: 'Sign in to check availability' })
+      .getAttribute('href'),
+  ).toBe('/account/serviceability');
   expect(screen.queryByRole('button', { name: /book pickup/i })).toBeNull();
 });
 test('production account is gated with zero network, no fixture login', () => {
@@ -206,7 +210,7 @@ test('uncertain save locks inputs and keeps same command across account navigati
       'fieldset',
     )?.disabled,
   ).toBe(true);
-  fireEvent.click(screen.getByRole('link', { name: 'Account overview' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Account' }));
   fireEvent.click(screen.getByRole('link', { name: 'Saved addresses' }));
   fireEvent.click(screen.getByRole('button', { name: 'Retry identical save' }));
   await waitFor(() =>

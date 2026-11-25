@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Runtime } from '../runtime';
 import { safeMessage } from '../api/contracts';
+import { Lotus } from '../public';
 export function AuthForm({ runtime }: { runtime: Runtime }) {
   const session = runtime.session;
   const [phone, setPhone] = useState(''),
@@ -26,7 +27,13 @@ export function AuthForm({ runtime }: { runtime: Runtime }) {
   }
   return (
     <section className="auth-form">
+      <Lotus />
       <h2>{challenge ? 'Verify your mobile number' : 'Welcome to Tirodhan'}</h2>
+      <p>
+        {challenge
+          ? 'Enter the six-digit code sent to your mobile number.'
+          : 'Continue with your mobile number'}
+      </p>
       <form
         onSubmit={(e) => {
           e.preventDefault();

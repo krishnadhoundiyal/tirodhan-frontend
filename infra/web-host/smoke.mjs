@@ -52,6 +52,12 @@ await smoke({}, async (get) => {
   const config = await get('/web-session-config.json');
   assert.equal(config.headers.get('cache-control'), 'no-store');
   assert.equal(await config.json(), null);
+  if (product === 'customer')
+    assert.deepEqual(await (await get('/web-customer-features.json')).json(), {
+      profile: false,
+      preferences: false,
+      paymentMethods: false,
+    });
   const home = await get('/');
   const homeHtml = await home.text();
   assert.equal(home.status, 200);
@@ -92,9 +98,21 @@ const env = {
   WEB_AUTH_LOGOUT_PATH: '/web/logout',
   WEB_AUTH_CSRF_HEADER: 'X-Smoke-Session',
   WEB_AUTH_CSRF_VALUE: '1',
+  WEB_CUSTOMER_PROFILE_ENABLED: 'true',
+  WEB_CUSTOMER_PREFERENCES_ENABLED: 'false',
+  WEB_CUSTOMER_PAYMENT_METHODS_ENABLED: 'true',
   TIRODHAN_GATEWAY_SECRET: 'synthetic-excluded-value',
 };
 await smoke(env, async (get) => {
+  const features = await get('/web-customer-features.json');
+  if (product === 'customer') {
+    assert.equal(features.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await features.json(), {
+      profile: true,
+      preferences: false,
+      paymentMethods: true,
+    });
+  } else assert.equal(features.status, 404);
   const config = await get('/web-session-config.json');
   assert.deepEqual(await config.json(), {
     approved: true,
@@ -112,6 +130,46 @@ await smoke(env, async (get) => {
     csrf: { header: 'X-Smoke-Session', value: '1' },
   });
 });
+const syntheticOriginKey = 'a5'.repeat(32);
+await smoke(
+  {
+    ...env,
+    WEB_APIM_ORIGIN_REQUIRED: 'true',
+    WEB_APIM_ORIGIN_SECRET: syntheticOriginKey,
+    WEB_CHECKOUT_POC_REFERENCE: 'synthetic-checkout-only',
+  },
+  async (get) => {
+    const headers = { 'X-Tirodhan-Web-Origin': syntheticOriginKey };
+    for (const path of ['/', deepLink, '/web-session-config.json']) {
+      assert.equal((await get(path)).status, 403);
+      assert.equal((await get(path, { headers })).status, 200);
+    }
+    assert.equal(
+      (
+        await get('/', {
+          headers: { 'X-Tirodhan-Web-Origin': 'ff'.repeat(32) },
+        })
+      ).status,
+      403,
+    );
+    const config = await get('/web-session-config.json', { headers });
+    assert(!(await config.text()).includes(syntheticOriginKey));
+    const checkoutConfig = '/web-checkout-config.json';
+    assert.equal((await get(checkoutConfig)).status, 403);
+    const checkout = await get(checkoutConfig, { headers });
+    if (product === 'customer') {
+      assert.equal(checkout.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await checkout.json(), {
+        approved: true,
+        approvalReference: 'synthetic-checkout-only',
+        environment: 'nonprod',
+        browserOrigin: env.WEB_AUTH_BROWSER_ORIGIN,
+      });
+    } else {
+      assert.equal(checkout.status, 404);
+    }
+  },
+);
 await smoke({ ...env, WEB_ENVIRONMENT: 'prod' }, async (get) => {
   assert.equal(await (await get('/web-session-config.json')).json(), null);
 });

@@ -42,15 +42,15 @@ export function productFixture(owner: string) {
     live_customer_holds_available: true,
     hold_blocker: null,
   };
-  const image = {
-    url: 'https://customer-fixture.invalid/illustration',
+  const artwork = (file: string, alt: string) => ({
+    url: `https://customer-fixture.invalid/catalogue-artwork/${file}.webp`,
     thumbnail_url: null,
     width: 300,
     height: 180,
-    alt_text: 'Illustrative lotus for a development collection category',
+    alt_text: alt,
     blurhash: null,
     expires_at: null,
-  };
+  });
   const groups = [
     ['floral', 'Floral & Organic'],
     ['objects', 'Sacred Objects'],
@@ -75,6 +75,17 @@ export function productFixture(owner: string) {
     ['ornaments', 'fabrics', 'Sacred Ornaments & Accessories'],
     ['covers', 'fabrics', 'Altar Cloth & Covers'],
   ];
+  const artworkFor = (code: string, label: string) =>
+    artwork(
+      code === 'vastra'
+        ? 'fabrics'
+        : code === 'cloth'
+          ? 'vastra'
+          : code === 'covers'
+            ? 'altar'
+            : code,
+      label,
+    );
   const catalogue: CatalogueDto = {
     version: 'customer-fixture-catalogue',
     groups: groups.map(([group_code, display_name], i) => ({
@@ -90,21 +101,31 @@ export function productFixture(owner: string) {
       description: 'Development collection guide; not live eligibility.',
       display_order: i,
       active: true,
-      image,
-      thumbnail: image,
+      image: artworkFor(category_code!, display_name!),
+      thumbnail: artworkFor(category_code!, display_name!),
       handling_hints: 'Keep packed items ready for respectful collection.',
       input: { quantity: 'OPTIONAL', weight_grams: 'OPTIONAL' },
     })),
-    quick_categories: labels.slice(0, 8).map(([category_code, , label], i) => ({
+    quick_categories: [
+      ['flowers', 'Flower Garlands'],
+      ['havan', 'Havan Samagri'],
+      ['idols', 'Idols & Murti'],
+      ['books', 'Holy Books'],
+      ['cloth', 'Vastra'],
+      ['ornaments', 'Ornaments'],
+      ['decor', 'Temple Decor'],
+      ['yantras', 'Diyas & Pots'],
+      ['prasad', 'Prasad'],
+    ].map(([category_code, label], i) => ({
       category_code: category_code!,
       label: label!,
       display_order: i,
     })),
     artwork: {
-      hero: image,
-      home: image,
-      rickshaw: image,
-      receiving_point: image,
+      hero: artwork('hero', 'Sacred idol, diya and flowers'),
+      home: artwork('home-journey', 'Your home'),
+      rickshaw: artwork('rickshaw', 'Human-powered Tirodhan rickshaw'),
+      receiving_point: null,
     },
   };
   const records = new Map<string, CollectionDetail>(),
@@ -362,7 +383,12 @@ export function productFixture(owner: string) {
         });
       return response(value, status);
     };
-    if (path.endsWith('/collection-catalogue')) return response(catalogue);
+    if (path.endsWith('/collection-catalogue'))
+      return response(
+        new URLSearchParams(location.search).get('catalogue') === 'empty'
+          ? { ...catalogue, groups: [], categories: [], quick_categories: [] }
+          : catalogue,
+      );
     if (path.endsWith('/weight-pricing-policy')) return response(policy);
     if (path.endsWith('/collection-quotes')) {
       if (body.policy_revision !== policy.policy_revision)
@@ -608,10 +634,19 @@ export function productFixture(owner: string) {
       return response({
         methods: [
           {
-            code: 'PROVIDER_CHECKOUT',
-            label: 'Secure provider checkout',
-            description:
-              'Methods are selected in checkout. No card details stored.',
+            code: 'UPI',
+            label: 'UPI',
+            description: 'Approve the payment in your UPI app.',
+          },
+          {
+            code: 'CARD',
+            label: 'Credit or debit card',
+            description: 'Enter your card details on the secure checkout page.',
+          },
+          {
+            code: 'NETBANKING',
+            label: 'Net banking',
+            description: 'Complete the payment through your bank.',
           },
         ],
       });
