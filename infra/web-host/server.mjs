@@ -60,6 +60,19 @@ const session =
         },
       }
     : null;
+const checkoutReference = env.WEB_CHECKOUT_POC_REFERENCE;
+const checkout =
+  product === 'customer' &&
+  session &&
+  checkoutReference &&
+  /^[A-Za-z0-9][A-Za-z0-9:/._#-]{0,250}$/.test(checkoutReference)
+    ? {
+        approved: true,
+        approvalReference: checkoutReference,
+        environment: session.environment,
+        browserOrigin: session.browserOrigin,
+      }
+    : null;
 const index = product === 'customer' ? 'account/index.html' : 'index.html';
 const requiredEntries =
   product === 'customer' ? ['index.html', index, '404.html'] : [index];
@@ -102,6 +115,15 @@ const server = createServer(async (req, res) => {
     )
       return send(403, types['.txt'], 'Forbidden');
   }
+  if (path === '/web-checkout-config.json' && product === 'customer')
+    return send(
+      200,
+      'application/json; charset=utf-8',
+      JSON.stringify(checkout),
+      {
+        'X-Robots-Tag': 'noindex, nofollow',
+      },
+    );
   if (path === '/web-session-config.json')
     return send(
       200,
