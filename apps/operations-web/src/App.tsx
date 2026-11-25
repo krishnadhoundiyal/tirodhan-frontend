@@ -172,9 +172,13 @@ function Admission({ runtime }: { runtime: Runtime }) {
   return (
     <main className="admission">
       <div className="admission-brand">
-        <span className="brand-symbol" aria-hidden="true">
-          त
-        </span>
+        <img
+          className="brand-symbol"
+          src="/tirodhan-lotus.svg"
+          width={44}
+          height={44}
+          alt=""
+        />
         <span>
           Tirodhan <small>Operations</small>
         </span>
@@ -312,9 +316,13 @@ function Shell({ runtime }: { runtime: Runtime }) {
       </a>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-symbol" aria-hidden="true">
-            त
-          </span>
+          <img
+            className="brand-symbol"
+            src="/tirodhan-lotus.svg"
+            width={44}
+            height={44}
+            alt=""
+          />
           <span>
             Tirodhan<small>OPERATIONS</small>
           </span>

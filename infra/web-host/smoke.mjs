@@ -112,6 +112,31 @@ await smoke(env, async (get) => {
     csrf: { header: 'X-Smoke-Session', value: '1' },
   });
 });
+const syntheticOriginKey = 'a5'.repeat(32);
+await smoke(
+  {
+    ...env,
+    WEB_APIM_ORIGIN_REQUIRED: 'true',
+    WEB_APIM_ORIGIN_SECRET: syntheticOriginKey,
+  },
+  async (get) => {
+    const headers = { 'X-Tirodhan-Web-Origin': syntheticOriginKey };
+    for (const path of ['/', deepLink, '/web-session-config.json']) {
+      assert.equal((await get(path)).status, 403);
+      assert.equal((await get(path, { headers })).status, 200);
+    }
+    assert.equal(
+      (
+        await get('/', {
+          headers: { 'X-Tirodhan-Web-Origin': 'ff'.repeat(32) },
+        })
+      ).status,
+      403,
+    );
+    const config = await get('/web-session-config.json', { headers });
+    assert(!(await config.text()).includes(syntheticOriginKey));
+  },
+);
 await smoke({ ...env, WEB_ENVIRONMENT: 'prod' }, async (get) => {
   assert.equal(await (await get('/web-session-config.json')).json(), null);
 });

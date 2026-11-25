@@ -164,7 +164,7 @@ label > select {
     serif;
   letter-spacing: -0.05em;
 }
-.wordmark svg {
+.wordmark .lotus {
   width: 44px;
   height: 44px;
   stroke: #a3702b;
@@ -438,7 +438,7 @@ label > select {
   padding-top: 70px;
   padding-bottom: 80px;
 }
-.closing svg {
+.closing .lotus {
   width: 55px;
   height: 50px;
   stroke: #a77533;
@@ -592,7 +592,7 @@ label > select {
   grid-template-columns: 1fr 2fr;
   gap: 2rem;
 }
-.about-statement svg {
+.about-statement .lotus {
   width: 90px;
   stroke: #a77533;
   stroke-width: 1.2;
@@ -889,7 +889,7 @@ label > select {
   .wordmark {
     font-size: 1.8rem;
   }
-  .wordmark svg {
+  .wordmark .lotus {
     width: 35px;
   }
   .wordmark-note {
@@ -1056,7 +1056,7 @@ label > select {
     grid-template-columns: 1fr;
     gap: 1.3rem;
   }
-  .about-statement svg {
+  .about-statement .lotus {
     width: 55px;
     grid-row: auto;
   }

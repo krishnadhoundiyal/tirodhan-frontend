@@ -75,6 +75,82 @@ function RiderChoice({
     </label>
   );
 }
+export function RiderProvisioning({
+  runtime,
+  riders,
+}: {
+  runtime: Runtime;
+  riders: dto.Rider[];
+}) {
+  const [rider, setRider] = useState('');
+  const [vehicleType, setVehicleType] = useState('');
+  const [capacityClass, setCapacityClass] = useState('');
+  const [accessRider, setAccessRider] = useState('');
+  const grants = useRef(new Map<string, string>());
+  const selected = riders.find(
+    (row) => row.rider_id === accessRider && row.profile_status === 'ACTIVE',
+  );
+  return (
+    <Panel title="Provision rider">
+      <p>Create a profile for a user who has already verified their account.</p>
+      <label>
+        Verified user ID
+        <input
+          value={rider}
+          onChange={(event) => setRider(event.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        Vehicle type code (optional)
+        <input
+          maxLength={100}
+          value={vehicleType}
+          onChange={(event) => setVehicleType(event.target.value)}
+        />
+      </label>
+      <label>
+        Capacity class code (optional)
+        <input
+          maxLength={100}
+          value={capacityClass}
+          onChange={(event) => setCapacityClass(event.target.value)}
+        />
+      </label>
+      <Review
+        runtime={runtime}
+        label="Review profile creation"
+        disabled={!rider.trim()}
+        build={() =>
+          commands.createRiderProfile(
+            rider.trim().toLowerCase(),
+            vehicleType.trim(),
+            capacityClass.trim(),
+          )
+        }
+      />
+      <RiderChoice
+        riders={riders.filter((row) => row.profile_status === 'ACTIVE')}
+        value={selected ? accessRider : ''}
+        onChange={setAccessRider}
+        label="Active rider profile"
+      />
+      <Review
+        runtime={runtime}
+        label="Review rider access grant"
+        disabled={!selected}
+        build={() => {
+          const identity =
+            grants.current.get(accessRider) ?? crypto.randomUUID();
+          grants.current.set(accessRider, identity);
+          return commands.grantRiderAccess(accessRider, identity);
+        }}
+      />
+    </Panel>
+  );
+}
+
 export function PendingAssignment({
   runtime,
   groups,

@@ -39,6 +39,48 @@ test('V1 manual assignment sends only the rider; no invented command UUID', asyn
     'Content-Type': 'application/json',
   });
 });
+test('rider provisioning calls the manager business API and retries the exact access grant', async () => {
+  const { session, fetcher } = harness();
+  await session.restore();
+  const runtime = createRuntime('verified-adapter', session, capabilities);
+  const profile = commands.createRiderProfile(
+    id(1),
+    'CYCLE',
+    'STANDARD',
+    id(94),
+  );
+  expect(profile.path).toBe('/v1/manager/business/commands');
+  expect(JSON.parse(profile.payload)).toEqual({
+    operation: 'RIDER_PROFILE',
+    client_command_id: id(94),
+    resource_id: id(1),
+    expected_version: 0,
+    reason: 'RIDER_ONBOARDING',
+    status: 'ACTIVE',
+    vehicle_type_code: 'CYCLE',
+    capacity_class_code: 'STANDARD',
+  });
+  const grant = commands.grantRiderAccess(id(1), id(95));
+  const review = runtime.commands.review(grant);
+  fetcher.mockRejectedValueOnce(new Error('lost response'));
+  await runtime.commands.submit(review, true);
+  expect(runtime.commands.snapshot()[0].phase).toBe('uncertain');
+  fetcher.mockResolvedValueOnce(response({ resource_id: id(95) }));
+  await runtime.commands.submit(review, true);
+  expect(runtime.commands.snapshot()[0].phase).toBe('completed');
+  expect(posts(fetcher).map(([, options]) => options?.body)).toEqual([
+    grant.payload,
+    grant.payload,
+  ]);
+  expect(JSON.parse(grant.payload)).toMatchObject({
+    operation: 'RIDER_ROLE',
+    client_command_id: id(95),
+    resource_id: id(95),
+    rider_id: id(1),
+    active: true,
+  });
+  runtime.dispose();
+});
 test('only branded allowlisted commands can reach transport', async () => {
   const { session, fetcher } = harness();
   await session.restore();

@@ -82,15 +82,13 @@ export function metadata(path: string) {
 }
 export function Lotus({ className = '' }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 100 80"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path d="M50 65C25 56 23 32 50 9c27 23 25 47 0 56Z" />
-      <path d="M50 65C23 70 10 50 9 31c24 0 40 12 41 34ZM50 65c27 5 40-15 41-34-24 0-40 12-41 34ZM20 70h60" />
-    </svg>
+    <img
+      className={`lotus ${className}`.trim()}
+      src="/tirodhan-lotus.svg"
+      width={44}
+      height={44}
+      alt=""
+    />
   );
 }
 export function Header({ path }: { path: string }) {

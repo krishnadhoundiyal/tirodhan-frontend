@@ -80,6 +80,10 @@
       "method": "GET",
       "path": "/manager/business/bookings/{request_id}/events/transfers"
     },
+    "manager-business-command": {
+      "method": "POST",
+      "path": "/manager/business/commands"
+    },
     "manager-rider-list": {
       "method": "GET",
       "path": "/manager/riders"
