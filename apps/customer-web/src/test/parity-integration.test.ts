@@ -191,7 +191,9 @@ test('account options, notification history, recommendations and authoritative h
   expect(
     (await m.repo.recommendations()).recommendations[0]?.category_code,
   ).toBe('flowers');
-  expect((await m.repo.paymentMethods()).methods.length).toBe(1);
+  expect(
+    (await m.repo.paymentMethods()).methods.map((method) => method.code),
+  ).toEqual(['UPI', 'CARD', 'NETBANKING']);
   expect((await m.repo.content('privacy')).slug).toBe('privacy');
   await r.session.logout();
 });

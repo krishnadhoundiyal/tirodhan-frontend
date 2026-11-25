@@ -61,6 +61,12 @@ const session =
       }
     : null;
 const checkoutReference = env.WEB_CHECKOUT_POC_REFERENCE;
+const customerFeatures = {
+  profile: !!session && env.WEB_CUSTOMER_PROFILE_ENABLED === 'true',
+  preferences: !!session && env.WEB_CUSTOMER_PREFERENCES_ENABLED === 'true',
+  paymentMethods:
+    !!session && env.WEB_CUSTOMER_PAYMENT_METHODS_ENABLED === 'true',
+};
 const checkout =
   product === 'customer' &&
   session &&
@@ -115,6 +121,12 @@ const server = createServer(async (req, res) => {
     )
       return send(403, types['.txt'], 'Forbidden');
   }
+  if (path === '/web-customer-features.json' && product === 'customer')
+    return send(
+      200,
+      'application/json; charset=utf-8',
+      JSON.stringify(customerFeatures),
+    );
   if (path === '/web-checkout-config.json' && product === 'customer')
     return send(
       200,

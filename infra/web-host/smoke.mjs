@@ -52,6 +52,12 @@ await smoke({}, async (get) => {
   const config = await get('/web-session-config.json');
   assert.equal(config.headers.get('cache-control'), 'no-store');
   assert.equal(await config.json(), null);
+  if (product === 'customer')
+    assert.deepEqual(await (await get('/web-customer-features.json')).json(), {
+      profile: false,
+      preferences: false,
+      paymentMethods: false,
+    });
   const home = await get('/');
   const homeHtml = await home.text();
   assert.equal(home.status, 200);
@@ -92,9 +98,21 @@ const env = {
   WEB_AUTH_LOGOUT_PATH: '/web/logout',
   WEB_AUTH_CSRF_HEADER: 'X-Smoke-Session',
   WEB_AUTH_CSRF_VALUE: '1',
+  WEB_CUSTOMER_PROFILE_ENABLED: 'true',
+  WEB_CUSTOMER_PREFERENCES_ENABLED: 'false',
+  WEB_CUSTOMER_PAYMENT_METHODS_ENABLED: 'true',
   TIRODHAN_GATEWAY_SECRET: 'synthetic-excluded-value',
 };
 await smoke(env, async (get) => {
+  const features = await get('/web-customer-features.json');
+  if (product === 'customer') {
+    assert.equal(features.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await features.json(), {
+      profile: true,
+      preferences: false,
+      paymentMethods: true,
+    });
+  } else assert.equal(features.status, 404);
   const config = await get('/web-session-config.json');
   assert.deepEqual(await config.json(), {
     approved: true,

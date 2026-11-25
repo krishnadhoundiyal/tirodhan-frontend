@@ -3,6 +3,7 @@ import { CustomerSession, unavailableAdapter } from './auth/session';
 import { createApimWebSessionAdapter } from './auth/apim-adapter';
 import {
   readCheckoutConfiguration,
+  readCustomerFeatures,
   readSessionConfiguration,
 } from './auth/release-config';
 import {
@@ -13,6 +14,7 @@ import { CustomerApi } from './api/customer';
 import type { ReactNode } from 'react';
 import {
   CustomerExperience,
+  verifiedCapabilities,
   type ExperienceOptions,
 } from './features/customer-model';
 export interface DevelopmentTools {
@@ -104,9 +106,12 @@ export async function releaseRuntime(
     locks,
     fetcher,
   });
-  const checkout = adapter.available
-    ? await readCheckoutConfiguration(browserOrigin, fetcher)
-    : null;
+  const [checkout, features] = adapter.available
+    ? await Promise.all([
+        readCheckoutConfiguration(browserOrigin, fetcher),
+        readCustomerFeatures(browserOrigin, fetcher),
+      ])
+    : [null, []];
   return createRuntime(
     new CustomerSession(
       adapter,
@@ -114,6 +119,7 @@ export async function releaseRuntime(
       fetcher,
     ),
     {
+      capabilities: new Set([...verifiedCapabilities, ...features]),
       checkout: checkout
         ? razorpayCheckout(checkout, {
             origin: browserOrigin,

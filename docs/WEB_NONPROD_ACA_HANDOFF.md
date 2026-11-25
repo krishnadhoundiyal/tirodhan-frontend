@@ -44,6 +44,8 @@ Set the following public environment variables separately on the two ACA revisio
 
 Set each route and marker exactly as registered at APIM. All values above are public. Product is fixed by the image target. Gateway secrets, refresh tokens, cookie names and raw FastAPI URLs do not belong in this configuration. Web Locks and local browser storage for the opaque cookie recovery flag are prerequisites. The access grant remains in memory.
 
+Customer profile, preferences and payment methods each have a separate runtime switch. After authentication acceptance and verification of the matching FastAPI operations through APIM, set `WEB_CUSTOMER_PROFILE_ENABLED`, `WEB_CUSTOMER_PREFERENCES_ENABLED` or `WEB_CUSTOMER_PAYMENT_METHODS_ENABLED` to literal `true` for the approved capability. Each defaults to off, and the host returns all three disabled while web authentication is off. The current payment methods contract can legitimately return an empty list. Provider checkout remains separately gated.
+
 The Manager image supports the existing optional build arguments `VITE_OPERATIONS_V2_DISPATCH`, `VITE_OPERATIONS_V2_FLEET`, and `VITE_OPERATIONS_V2_ORCHESTRATION`. All default to `false`. Set each to literal `true` only with the corresponding backend capability. Fleet depends on dispatch, and orchestration depends on both. The Manager route UUID page resolves the shell in either configuration. Reading a route revision requires the dispatch capability.
 
 ## Backend and APIM Terraform release

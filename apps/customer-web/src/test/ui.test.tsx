@@ -210,7 +210,7 @@ test('uncertain save locks inputs and keeps same command across account navigati
       'fieldset',
     )?.disabled,
   ).toBe(true);
-  fireEvent.click(screen.getByRole('link', { name: 'Account overview' }));
+  fireEvent.click(screen.getByRole('link', { name: 'Account' }));
   fireEvent.click(screen.getByRole('link', { name: 'Saved addresses' }));
   fireEvent.click(screen.getByRole('button', { name: 'Retry identical save' }));
   await waitFor(() =>

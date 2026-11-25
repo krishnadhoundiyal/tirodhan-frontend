@@ -13,6 +13,10 @@ import type { Prepared } from './api/customer';
 import type { Runtime } from './runtime';
 import { ProductArea, AuthForm } from './features/product';
 import { LocationControls } from './features/location-controls';
+import {
+  AccountNavigation,
+  followAccountLink,
+} from './features/account-navigation';
 import { needsAddressConfirmation } from './parity/features/addresses/distance';
 
 function usePath() {
@@ -65,12 +69,25 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
       </a>
       <Header path={path} />
       {runtime.development?.banner}
-      <main id="main" className="account-page" tabIndex={-1}>
+      <main
+        id="main"
+        className={
+          state.phase === 'ready'
+            ? 'account-page customer-workspace'
+            : 'account-page customer-signin'
+        }
+        tabIndex={-1}
+      >
         <div className="account-heading">
           <div>
-            <p className="eyebrow">YOUR CUSTOMER SPACE</p>
             <h1 id="account-title" tabIndex={-1}>
-              Your account
+              {state.phase !== 'ready'
+                ? 'Your account'
+                : path === '/account/home'
+                  ? 'Home'
+                  : path === '/account'
+                    ? 'Account'
+                    : 'Sacred Collection'}
             </h1>
           </div>
           {state.phase === 'ready' && (
@@ -93,74 +110,68 @@ export function CustomerApp({ runtime }: { runtime: Runtime }) {
             {state.phase === 'unavailable' ? (
               <Gate />
             ) : (
-              <section className="notice">
-                <h2>
-                  {state.phase === 'denied'
-                    ? 'CUSTOMER membership required.'
-                    : state.phase === 'checking'
-                      ? 'Checking the current customer…'
-                      : 'Customer access'}
-                </h2>
-                <p>
-                  Admission requires the current backend principal and CUSTOMER
-                  membership. Access grants alone do not establish admission.
-                </p>
-                {runtime.development &&
-                  state.phase === 'signedOut' &&
-                  !state.logoutUnconfirmed &&
-                  !state.cleanupPending && (
-                    <button
-                      className="button"
-                      disabled={busy}
-                      onClick={() => void action(runtime.development!.signIn)}
-                    >
-                      {runtime.development.signInLabel}
-                    </button>
+              state.phase !== 'signedOut' && (
+                <section className="notice">
+                  <h2>
+                    {state.phase === 'denied'
+                      ? 'CUSTOMER membership required.'
+                      : state.phase === 'checking'
+                        ? 'Checking the current customer…'
+                        : 'Customer access'}
+                  </h2>
+                  {state.logoutUnconfirmed && (
+                    <>
+                      <p>
+                        Sign-out is not confirmed. Confirm it before starting a
+                        new session.
+                      </p>
+                      <button
+                        className="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void action(() => runtime.session.logout())
+                        }
+                      >
+                        Retry sign-out
+                      </button>
+                    </>
                   )}
-                {state.logoutUnconfirmed && (
-                  <>
-                    <p>
-                      Sign-out is not confirmed. Confirm it before starting a
-                      new session.
-                    </p>
-                    <button
-                      className="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void action(() => runtime.session.logout())
-                      }
-                    >
-                      Retry sign-out
-                    </button>
-                  </>
-                )}
-                {!state.logoutUnconfirmed && state.cleanupPending && (
-                  <>
-                    <p>
-                      Gateway sign-out is confirmed. Local recovery cleanup is
-                      still pending; complete it before starting a new session.
-                    </p>
-                    <button
-                      className="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void action(() => runtime.session.logout())
-                      }
-                    >
-                      Retry local cleanup
-                    </button>
-                  </>
-                )}
-              </section>
+                  {!state.logoutUnconfirmed && state.cleanupPending && (
+                    <>
+                      <p>
+                        Gateway sign-out is confirmed. Local recovery cleanup is
+                        still pending; complete it before starting a new
+                        session.
+                      </p>
+                      <button
+                        className="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void action(() => runtime.session.logout())
+                        }
+                      >
+                        Retry local cleanup
+                      </button>
+                    </>
+                  )}
+                </section>
+              )
             )}
             <AuthForm runtime={runtime} />
-            <div className="account-reserved">
-              <h2>What your account will include</h2>
-              <p>
-                Your complete collection journey, including saved addresses,
-                booking, payment, activity and account preferences.
-              </p>
-            </div>
+            {runtime.development &&
+              state.phase === 'signedOut' &&
+              !state.logoutUnconfirmed &&
+              !state.cleanupPending && (
+                <div className="customer-preview-entry">
+                  <button
+                    className="button secondary small"
+                    disabled={busy}
+                    onClick={() => void action(runtime.development!.signIn)}
+                  >
+                    {runtime.development.signInLabel}
+                  </button>
+                </div>
+              )}
           </>
         ) : (
           <Account
@@ -188,13 +199,10 @@ function Account({
   owner: string;
 }) {
   const links = [
-    ['', 'Account overview'],
     ['catalogue', 'Collection catalogue'],
     ['review', 'Book a pickup'],
     ['addresses', 'Saved addresses'],
     ['serviceability', 'Service availability'],
-    ['bookings', 'Bookings'],
-    ['activity', 'Activity'],
     ['profile', 'Edit profile'],
     ['preferences', 'Language & updates'],
     ['favourites', 'Favourites'],
@@ -204,50 +212,54 @@ function Account({
     ['information/help', 'Help & Support'],
   ];
   return (
-    <div className="account-layout">
-      <aside>
-        <nav aria-label="Customer account">
-          {links.map(([route, label]) => {
-            const href = route ? `/account/${route}` : '/account';
-            return (
-              <a
-                key={href}
-                href={href}
-                aria-current={path === href ? 'page' : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate(href);
-                }}
-              >
-                {label}
-              </a>
-            );
-          })}
-        </nav>
-        <p className="fine">
-          CUSTOMER access
-          <br />
-          Verified principal
-        </p>
-      </aside>
-      <div>
-        {path !== '/account/addresses' &&
-          path !== '/account/serviceability' && (
-            <ProductArea runtime={runtime} path={path} navigate={navigate} />
-          )}
-        <div
-          hidden={
-            path !== '/account/addresses' && path !== '/account/serviceability'
-          }
-        >
-          <AddressManager
-            runtime={runtime}
-            owner={owner}
-            serviceOnly={path === '/account/serviceability'}
-          />
+    <>
+      <AccountNavigation path={path} navigate={navigate} />
+      <div
+        className={
+          path === '/account/home'
+            ? 'account-layout customer-home-layout'
+            : 'account-layout'
+        }
+      >
+        {path !== '/account/home' && (
+          <aside>
+            <nav aria-label="Customer account">
+              {links.map(([route, label]) => {
+                const href = route ? `/account/${route}` : '/account';
+                return (
+                  <a
+                    key={href}
+                    href={href}
+                    aria-current={path === href ? 'page' : undefined}
+                    onClick={(event) => followAccountLink(event, navigate)}
+                  >
+                    {label}
+                  </a>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
+        <div>
+          {path !== '/account/addresses' &&
+            path !== '/account/serviceability' && (
+              <ProductArea runtime={runtime} path={path} navigate={navigate} />
+            )}
+          <div
+            hidden={
+              path !== '/account/addresses' &&
+              path !== '/account/serviceability'
+            }
+          >
+            <AddressManager
+              runtime={runtime}
+              owner={owner}
+              serviceOnly={path === '/account/serviceability'}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 function AddressManager({

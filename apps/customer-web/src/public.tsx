@@ -48,6 +48,7 @@ export const pages = {
 } as const;
 export const publicPaths = Object.keys(pages);
 export const accountPaths = [
+  '/account/home',
   '/account/catalogue',
   '/account/review',
   '/account/pickup',

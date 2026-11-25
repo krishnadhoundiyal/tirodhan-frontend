@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { CustomerExperience } from './customer-model';
 import { currentLocation, approvedMap } from '../platform/location';
 import { userMessage } from '../parity/api/errors';
 import type { Location } from '../api/contracts';
 export function LocationControls({ model }: { model: CustomerExperience }) {
+  const headingId = useId();
   const draft = useSyncExternalStore(model.subscribe, model.snapshot);
   const [search, setSearch] = useState(''),
     [suggested, setSuggested] = useState(''),
@@ -57,9 +64,7 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
           marker = L.circleMarker(event.latlng, { radius: 7 }).addTo(map);
           setPoint(next);
           model.setLocation(next);
-          setSuggested(
-            'Confirm the complete address manually for this selected pin.',
-          );
+          setSuggested('');
         });
         remove = () => map.remove();
       })
@@ -78,6 +83,7 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
     request.current = new AbortController();
     setBusy(true);
     setError(undefined);
+    setSuggested('');
     try {
       const p = await currentLocation(
         navigator.geolocation,
@@ -92,11 +98,8 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
           request.current.signal,
         );
         if (gen === generation.current && model.current())
-          setSuggested(text ?? 'Enter your complete address manually.');
-      } else
-        setSuggested(
-          'Location found. Enter your complete address manually; no reverse-geocoder is approved.',
-        );
+          setSuggested(text ?? '');
+      }
     } catch (e) {
       if (gen === generation.current) setError(e);
     } finally {
@@ -110,6 +113,7 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
     request.current = new AbortController();
     setBusy(true);
     setError(undefined);
+    setSuggested('');
     try {
       const rows = await model.options.geocoder.search(
         search.trim(),
@@ -130,64 +134,78 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
     }
   }
   return (
-    <section className="location-panel">
-      <h2>Find a pickup location</h2>
-      <p>
-        Manual address entry always remains available. Location is requested
-        only when you choose the button below.
-      </p>
-      <div className="actions">
+    <section className="location-panel" aria-labelledby={headingId}>
+      <header className="location-heading">
+        <span className="location-icon" aria-hidden="true" />
+        <div>
+          <h2 id={headingId}>Find a pickup location</h2>
+          <p>Choose a saved address below or add a new one.</p>
+        </div>
+      </header>
+      <div className="location-method">
+        <p>
+          Use your device location to check how far away a saved address is.
+        </p>
         <button
-          className="button secondary small"
+          type="button"
+          className="button small"
           disabled={busy}
           onClick={() => void locate()}
         >
           Use current location
         </button>
-        <label>
-          Search area, landmark or address
-          <input
-            value={search}
-            maxLength={2000}
-            onChange={(e) => {
-              generation.current++;
-              request.current?.abort();
-              setBusy(false);
-              setSearch(e.target.value);
-            }}
-          />
-        </label>
-        <button
-          disabled={busy || !model.options.geocoder || !search.trim()}
-          onClick={() => void find()}
-        >
-          Search location
-        </button>
       </div>
-      {!model.options.geocoder && (
-        <p className="fine">
-          Map search awaits an approved geocoding connection. Use saved-address
-          search or manual entry.
-        </p>
+      {model.options.geocoder && (
+        <form
+          className="location-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void find();
+          }}
+        >
+          <label>
+            Search area, landmark or address
+            <input
+              type="search"
+              value={search}
+              maxLength={2000}
+              onChange={(e) => {
+                generation.current++;
+                request.current?.abort();
+                setBusy(false);
+                setSearch(e.target.value);
+              }}
+            />
+          </label>
+          <button
+            className="button secondary small"
+            disabled={busy || !search.trim()}
+          >
+            Search location
+          </button>
+        </form>
       )}
-      {approvedMap(model.options.map) ? (
+      {approvedMap(model.options.map) && (
         <div
           className="browser-map"
           ref={mapElement}
           aria-label="Pickup location map"
         />
-      ) : (
-        <p className="fine">
-          Interactive map tiles await approved provider/privacy configuration.
-        </p>
       )}
-      {point && (
-        <p role="status">
-          A location point is selected for optional distance confirmation. It is
-          not automatically attached to an edited address.
-        </p>
-      )}
+      <div role="status" className="location-status">
+        {point && (
+          <div className="location-selected">
+            <span aria-hidden="true">✓</span>
+            <div>
+              <strong>Location selected</strong>
+              <p>Choose or enter the pickup address below.</p>
+            </div>
+          </div>
+        )}
+        {suggested && <p>{suggested}</p>}
+      </div>
       <form
+        className="location-coordinates"
         onSubmit={(e) => {
           e.preventDefault();
           const latitudeValue = Number(latitude),
@@ -210,34 +228,39 @@ export function LocationControls({ model }: { model: CustomerExperience }) {
           setPoint(p);
           model.setLocation(p);
           setError(undefined);
+          setSuggested('');
         }}
       >
         <details>
-          <summary>Choose a pin with coordinates</summary>
-          <p>
-            Optional keyboard alternative to selecting the map. Coordinates
-            alone do not confirm serviceability.
-          </p>
-          <label>
-            Latitude
-            <input
-              inputMode="decimal"
-              value={latitude}
-              onChange={(e) => setLatitude(e.target.value)}
-            />
-          </label>
-          <label>
-            Longitude
-            <input
-              inputMode="decimal"
-              value={longitude}
-              onChange={(e) => setLongitude(e.target.value)}
-            />
-          </label>
-          <button type="submit">Select location pin</button>
+          <summary>Enter coordinates</summary>
+          <div className="location-coordinate-fields">
+            <p>
+              Set a pin for the distance check using latitude and longitude.
+            </p>
+            <div className="location-coordinate-grid">
+              <label>
+                Latitude
+                <input
+                  inputMode="decimal"
+                  value={latitude}
+                  onChange={(e) => setLatitude(e.target.value)}
+                />
+              </label>
+              <label>
+                Longitude
+                <input
+                  inputMode="decimal"
+                  value={longitude}
+                  onChange={(e) => setLongitude(e.target.value)}
+                />
+              </label>
+            </div>
+            <button className="button secondary small" type="submit">
+              Select location pin
+            </button>
+          </div>
         </details>
       </form>
-      {suggested && <p>{suggested}</p>}
       {error !== undefined && (
         <p className="error" role="alert">
           {userMessage(error)}

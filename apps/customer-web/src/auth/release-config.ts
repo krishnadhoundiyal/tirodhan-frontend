@@ -3,7 +3,10 @@ import type { CheckoutApproval } from '../platform/checkout';
 
 /** The release host exposes only public deployment inputs at this same-origin URL. */
 async function readPublicConfiguration(
-  path: '/web-session-config.json' | '/web-checkout-config.json',
+  path:
+    | '/web-session-config.json'
+    | '/web-checkout-config.json'
+    | '/web-customer-features.json',
   browserOrigin: string,
   fetcher: typeof fetch,
 ): Promise<unknown> {
@@ -30,6 +33,30 @@ async function readPublicConfiguration(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function readCustomerFeatures(
+  browserOrigin: string,
+  fetcher: typeof fetch,
+) {
+  const value = await readPublicConfiguration(
+    '/web-customer-features.json',
+    browserOrigin,
+    fetcher,
+  );
+  const features = ['profile', 'preferences', 'paymentMethods'] as const;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Object.keys(value).length !== features.length ||
+    !features.every(
+      (key) => typeof (value as Record<string, unknown>)[key] === 'boolean',
+    )
+  )
+    return [];
+  return features.filter(
+    (key) => (value as Record<string, unknown>)[key] === true,
+  );
 }
 
 export async function readSessionConfiguration(
